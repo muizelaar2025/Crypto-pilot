@@ -1,7 +1,9 @@
-// app.js — Productieklaar: Top10, Holdings, Grafieken, Advies Log & Learning
+// app.js — Crypto Pilot PWA (Geoptimaliseerd voor iPad/Safari)
 const CG_API = "https://api.coingecko.com/api/v3";
 let monitorHandle = null;
+let chart = null;
 let currentTop10 = [];
+let holdings = [];
 const TRANSACTION_FEE = 5.0;
 const ADVICE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
@@ -57,7 +59,7 @@ function computeScores(coins) {
   });
 }
 
-// ---------------- Render top10 ----------------
+// ---------------- Render Top10 ----------------
 function renderTop10(list) {
   const container = el("top10-list");
   container.innerHTML = "";
@@ -133,8 +135,6 @@ async function refreshSelection() {
 }
 
 // ---------------- Holdings ----------------
-let holdings = [];
-
 function saveHoldingRow(h) {
   holdings.push(h);
   renderHoldings();
@@ -219,48 +219,7 @@ async function renderAdviceLog(){
   }));
 }
 
-// ---------------- Advice checking / learning ----------------
-async function updateAdviceResults(){
-  const logs = loadAdviceLogs();
-  const vs = el("vsCurrency").value;
-  let changed = false;
-  let stats = loadSuccessStats();
-
-  for(let i=0;i<logs.length;i++){
-    const l = logs[i];
-    if(l.result === "?"){
-      const current = await getPrice(l.coin, vs);
-      if(current === null) continue;
-      let correct = false;
-      if(l.advice.toLowerCase().includes("koop")) correct = current > l.startPrice;
-      if(l.advice.toLowerCase().includes("verkoop")) correct = current < l.startPrice;
-      if(correct){
-        logs[i].result = "✅";
-        stats.checked += 1; stats.correct += 1;
-        log(`✅ Advies CORRECT: ${l.coin} (${l.advice})`);
-      } else {
-        const diff = Math.abs((current - l.startPrice) / l.startPrice);
-        if(diff > 0.005){
-          logs[i].result = "❌";
-          stats.checked += 1;
-          log(`❌ Advies FOUT: ${l.coin} (${l.advice})`);
-        }
-      }
-      changed = true;
-    }
-  }
-
-  if(changed){
-    saveAdviceLogs(logs);
-    saveSuccessStats(stats);
-    renderAdviceLog();
-    updateSuccessRateUI();
-  }
-}
-
 // ---------------- Charts ----------------
-let chart;
-
 async function loadChartData(coin, days, vs="eur"){
   try {
     const url = `${CG_API}/coins/${coin}/market_chart?vs_currency=${vs}&days=${days}`;
@@ -295,42 +254,61 @@ function populateChartDropdown(){
   }
 }
 
-// ---------------- UI wiring & monitor ----------------
-el("refreshSelection").addEventListener("click", refreshSelection);
-el("addHolding").addEventListener("click", ()=>{
-  const id = el("hold-coin").value.trim().toLowerCase();
-  const qty = parseFloat(el("hold-qty").value);
-  const price = parseFloat(el("hold-price").value);
-  if(!id || isNaN(qty) || isNaN(price)) { alert("Vul coin, qty en aankoopprijs in"); return; }
-  saveHoldingRow({id, qty, buyPrice: price});
-  el("hold-coin").value = ""; el("hold-qty").value=""; el("hold-price").value="";
-  renderHoldings();
-});
+// ---------------- DOM ready init ----------------
+document.addEventListener("DOMContentLoaded", () => {
 
-el("startMonitor").addEventListener("click", () => {
-  const interval = parseInt(el("interval").value,10);
-  if(monitorHandle) clearInterval(monitorHandle);
-  log("Live monitor gestart");
-  refreshSelection(); 
-  renderHoldings();
-  monitorHandle = setInterval(async () => {
-    await refreshSelection();
-    await renderHoldings();
-  }, interval);
-  if(!window._adviceChecker) window._adviceChecker = setInterval(updateAdviceResults, ADVICE_CHECK_INTERVAL_MS);
-});
+  // ---------------- UI wiring ----------------
+  el("refreshSelection").addEventListener("click", refreshSelection);
+  el("addHolding").addEventListener("click", ()=>{
+    const id = el("hold-coin").value.trim().toLowerCase();
+    const qty = parseFloat(el("hold-qty").value);
+    const price = parseFloat(el("hold-price").value);
+    if(!id || isNaN(qty) || isNaN(price)) { alert("Vul coin, qty en aankoopprijs in"); return; }
+    saveHoldingRow({id, qty, buyPrice: price});
+    el("hold-coin").value = ""; el("hold-qty").value=""; el("hold-price").value="";
+    renderHoldings();
+  });
 
-el("stopMonitor").addEventListener("click", () => {
-  if(monitorHandle) { clearInterval(monitorHandle); monitorHandle = null; log("Monitor gestopt"); }
-  if(window._adviceChecker){ clearInterval(window._adviceChecker); window._adviceChecker = null; }
-});
+  el("startMonitor").addEventListener("click", () => {
+    const interval = parseInt(el("interval").value,10);
+    if(monitorHandle) clearInterval(monitorHandle);
+    log("Live monitor gestart");
+    refreshSelection(); 
+    renderHoldings();
+    monitorHandle = setInterval(async () => {
+      await refreshSelection();
+      await renderHoldings();
+    }, interval);
+    if(!window._adviceChecker) window._adviceChecker = setInterval(updateAdviceResults, ADVICE_CHECK_INTERVAL_MS);
+  });
 
-// Grafiek laden
-el("loadChart").addEventListener("click", async ()=>{
-  const coin = el("chart-coin").value.trim().toLowerCase();
-  const days = el("chart-range").value;
-  const vs = el("vsCurrency").value;
-  if(!coin) { alert("Kies een coin uit de dropdown (Top10)"); return; }
-  const prices = await loadChartData(coin, days, vs);
-  if(chart) chart.destroy();
-  const ctx = document.getElementById("coinChart").getContext
+  el("stopMonitor").addEventListener("click", () => {
+    if(monitorHandle) { clearInterval(monitorHandle); monitorHandle = null; log("Monitor gestopt"); }
+    if(window._adviceChecker){ clearInterval(window._adviceChecker); window._adviceChecker = null; }
+  });
+
+  el("loadChart").addEventListener("click", async ()=>{
+    const coin = el("chart-coin").value.trim().toLowerCase();
+    const days = el("chart-range").value;
+    const vs = el("vsCurrency").value;
+    if(!coin) { alert("Kies een coin uit de dropdown (Top10)"); return; }
+    const prices = await loadChartData(coin, days, vs);
+    if(chart) chart.destroy();
+    const ctx = document.getElementById("coinChart").getContext("2d");
+    chart = new Chart(ctx,{
+      type:"line",
+      data:{ datasets:[{ label: `${coin} prijs`, data:prices, borderColor:"blue", backgroundColor:"rgba(0,123,255,0.2)", fill:true, pointRadius:0 }] },
+      options:{ scales:{ x:{ type:"time", time:{ unit: days>90 ? "month" : "day" } }, y:{ beginAtZero:false } } }
+    });
+  });
+
+  el("autoChart").addEventListener("click", ()=>{
+    populateChartDropdown(); 
+    alert("Chart dropdown gevuld met Top10 (kies coin en klik 'Laad grafiek')");
+  });
+
+  // ---------------- On load ----------------
+  renderAdviceLog();
+  updateSuccessRateUI();
+  populateChartDropdown();
+});
