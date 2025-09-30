@@ -1,98 +1,168 @@
-async function getLivePrice(coinId, vsCurrency = "eur") {
-  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=${vsCurrency}`;
+// app.js — Live Top10 + Holdings & advies (CoinGecko)
+const CG_API = "https://api.coingecko.com/api/v3";
+let monitorHandle = null;
+let currentTop10 = [];
+const TRANSACTION_FEE = 5.0;
+
+function el(id){ return document.getElementById(id); }
+function log(msg){ const out = el("output"); const p = document.createElement("div"); p.textContent = `${new Date().toLocaleTimeString()} — ${msg}`; out.prepend(p); }
+
+async function fetchMarkets(vs="eur", per_page=50) {
+  const url = `${CG_API}/coins/markets?vs_currency=${vs}&order=market_cap_desc&per_page=${per_page}&page=1&sparkline=false&price_change_percentage=24h,7d`;
   try {
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error(`HTTP fout: ${resp.status}`);
-    const data = await resp.json();
-    return data[coinId] ? data[coinId][vsCurrency] : null;
-  } catch (err) {
-    console.error("Prijs ophalen mislukt:", err);
+    const r = await fetch(url);
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    const data = await r.json();
+    return data; // array of coin objects
+  } catch(e){
+    console.error("fetchMarkets error", e);
     return null;
   }
 }
 
-let balance = 1000.0;
-let coins = 0;
-let lastPrice = null;
-const transactionFee = 5.0;
-let coinId = "bitcoin"; // standaard
-let monitorInterval = null; // hier slaan we de interval op
-let currentPrice = 0;
-
-function log(message) {
-  const output = document.getElementById("output");
-  const p = document.createElement("p");
-  p.textContent = message;
-  output.prepend(p); // nieuwste bovenaan
+// eenvoudige score: 0.6*7d + 0.3*24h + 0.1*(norm(volume))
+function computeScores(coins) {
+  // normalize volume (log scale) to avoid domination
+  const vols = coins.map(c => c.total_volume || 0);
+  const logVols = vols.map(v => Math.log10((v||1)));
+  const minV = Math.min(...logVols), maxV = Math.max(...logVols);
+  return coins.map(c => {
+    const ch7 = c.price_change_percentage_7d_in_currency || 0;
+    const ch24 = c.price_change_percentage_24h_in_currency || 0;
+    const lv = Math.log10((c.total_volume||1));
+    const normVol = (maxV===minV) ? 0.5 : (lv - minV) / (maxV - minV);
+    const score = (0.6 * ch7) + (0.3 * ch24) + (5 * normVol); // weights tuned for demo
+    return Object.assign({}, c, { opportunity_score: score });
+  });
 }
 
-function updateDashboard() {
-  const coinValue = coins * currentPrice;
-  const total = balance + coinValue;
-
-  document.getElementById("balance").textContent = balance.toFixed(2);
-  document.getElementById("coins").textContent = coins;
-  document.getElementById("coinValue").textContent = coinValue.toFixed(2);
-  document.getElementById("totalValue").textContent = total.toFixed(2);
+function renderTop10(list) {
+  const container = el("top10-list");
+  container.innerHTML = "";
+  list.forEach((c, i) => {
+    const p = document.createElement("p");
+    p.innerHTML = `<span class="pill">${i+1}</span> <strong>${c.name} (${c.symbol.toUpperCase()})</strong>
+      — prijs: ${c.current_price?.toLocaleString(undefined,{maximumFractionDigits:8})} • 7d: ${ (c.price_change_percentage_7d_in_currency||0).toFixed(2)}% • score: ${c.opportunity_score.toFixed(2)}
+      <button data-id="${c.id}" class="watch-btn">Volgen</button>`;
+    container.appendChild(p);
+  });
+  // attach watch buttons
+  container.querySelectorAll(".watch-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      el("hold-coin").value = btn.dataset.id;
+      el("hold-qty").focus();
+    });
+  });
 }
 
-async function checkMarket() {
-  currentPrice = await getLivePrice(coinId, "eur");
-  if (currentPrice === null) {
-    log(`❌ Kon prijs niet ophalen (${coinId})`);
-    return;
+async function refreshSelection() {
+  const vs = el("vsCurrency").value;
+  log("Selectie verversen…");
+  const markets = await fetchMarkets(vs, 50);
+  if(!markets) { log("Kon marktdata niet ophalen."); return; }
+  const scored = computeScores(markets);
+  scored.sort((a,b)=>b.opportunity_score - a.opportunity_score);
+  currentTop10 = scored.slice(0,10);
+  renderTop10(currentTop10);
+  log("Top10 bijgewerkt.");
+}
+
+// Holdings management
+let holdings = []; // {id, qty, buyPrice}
+
+function saveHoldingRow(h) {
+  holdings.push(h);
+  renderHoldings();
+}
+
+async function getPrice(coinId, vs="eur") {
+  try {
+    const url = `${CG_API}/simple/price?ids=${coinId}&vs_currencies=${vs}`;
+    const r = await fetch(url);
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    const j = await r.json();
+    return j[coinId] ? j[coinId][vs] : null;
+  } catch(e){
+    console.error("getPrice err", e);
+    return null;
   }
+}
 
-  if (lastPrice === null) {
-    lastPrice = currentPrice;
-    log(`ℹ️ Startprijs voor ${coinId}: €${currentPrice.toFixed(2)}`);
-    updateDashboard();
-    return;
-  }
-
-  let change = (currentPrice - lastPrice) / lastPrice;
-  let advice = "";
-
-  if (change < -0.05 && balance > currentPrice + transactionFee) {
-    // KOOP
-    let coinsBought = Math.floor((balance - transactionFee) / currentPrice);
-    if (coinsBought > 0) {
-      let cost = coinsBought * currentPrice + transactionFee;
-      balance -= cost;
-      coins += coinsBought;
-      advice = `📉 Koop ${coinsBought} ${coinId} @ €${currentPrice.toFixed(2)}`;
-    }
-  } else if (change > 0.07 && coins > 0) {
-    // VERKOOP
-    let proceeds = coins * currentPrice - transactionFee;
-    balance += proceeds;
-    advice = `📈 Verkoop ${coins} ${coinId} @ €${currentPrice.toFixed(2)}`;
-    coins = 0;
+function adviceForHolding(h, currentPrice, isInTop10, vs) {
+  // winst na fee:
+  const gross = (currentPrice - h.buyPrice) * h.qty;
+  const net = gross - TRANSACTION_FEE;
+  // heuristiek:
+  // - Als netto winst > 0 -> meestal behouden, tenzij score sterk negatief
+  // - Als netto winst <= 0 -> adviseren verkopen tenzij coin in top10
+  // - Als coin in top10 -> extra bias naar "Behouden"
+  if(net > 0) {
+    if(isInTop10) return {advice:"Behouden", reason:`Positief na fee (€${net.toFixed(2)}) + in top10`};
+    // compute future bias from currentTop10 scores
+    const tin = currentTop10.find(c=>c.id===h.id);
+    if(tin && tin.opportunity_score > 0) return {advice:"Behouden", reason:`Positief na fee (€${net.toFixed(2)}) en score=${tin.opportunity_score.toFixed(2)}`};
+    // small profit but weak score
+    if(net < Math.abs(0.01 * (h.buyPrice*h.qty))) return {advice:"Optioneel verkopen", reason:`Kleine netto winst (€${net.toFixed(2)}), score laag`};
+    return {advice:"Behouden", reason:`Netto winst €${net.toFixed(2)}`};
   } else {
-    advice = `⏳ Geen actie | ${coinId}: €${currentPrice.toFixed(2)}`;
+    if(isInTop10) return {advice:"Behouden", reason:`Verlies nu maar coin in top10 — kans op herstel`};
+    return {advice:"Verkopen", reason:`Netto verlies €${net.toFixed(2)} — overweeg verkopen`};
   }
-
-  log(advice);
-  lastPrice = currentPrice;
-  updateDashboard();
 }
 
-// Start live monitoring
-document.getElementById("simulate").addEventListener("click", () => {
-  coinId = document.getElementById("crypto").value.trim().toLowerCase();
-  let intervalValue = parseInt(document.getElementById("interval").value, 10);
-
-  document.getElementById("output").innerHTML = `<p>🔍 Live volgen van ${coinId} gestart (interval: ${intervalValue / 1000} sec)...</p>`;
-  balance = 1000.0;
-  coins = 0;
-  lastPrice = null;
-
-  updateDashboard();
-
-  // stop eerdere interval als die nog loopt
-  if (monitorInterval) {
-    clearInterval(monitorInterval);
+async function renderHoldings() {
+  const tbody = el("holdings-table").querySelector("tbody");
+  tbody.innerHTML = "";
+  const vs = el("vsCurrency").value;
+  for(const h of holdings) {
+    const price = await getPrice(h.id, vs);
+    const currentVal = (price!==null) ? price * h.qty : null;
+    const gross = (price!==null) ? (price - h.buyPrice) * h.qty : null;
+    const net = (gross!==null) ? gross - TRANSACTION_FEE : null;
+    const inTop = currentTop10.some(c=>c.id===h.id);
+    const ad = (price!==null) ? adviceForHolding(h, price, inTop, vs) : {advice:"Onbekend", reason:"Kon prijs niet ophalen"};
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${h.id}</td>
+      <td>${h.qty}</td>
+      <td>${h.buyPrice.toFixed(4)}</td>
+      <td>${price!==null ? price.toLocaleString(undefined,{maximumFractionDigits:8}) : "?"}</td>
+      <td>${net!==null ? "€"+net.toFixed(2) : "?"}</td>
+      <td class="${ad.advice==='Behouden'?'advice-hold':'advice-sell'}">${ad.advice}<br><small>${ad.reason}</small></td>
+      <td><button data-id="${h.id}" class="del">Verwijder</button></td>`;
+    tbody.appendChild(tr);
   }
+  // delete handlers
+  tbody.querySelectorAll(".del").forEach(b=>b.addEventListener("click", ev=>{
+    const id = b.dataset.id;
+    holdings = holdings.filter(x=>x.id!==id);
+    renderHoldings();
+  }));
+}
 
-  monitorInterval = setInterval(checkMarket, intervalValue);
+// UI wiring
+el("refreshSelection").addEventListener("click", refreshSelection);
+el("addHolding").addEventListener("click", ()=>{
+  const id = el("hold-coin").value.trim().toLowerCase();
+  const qty = parseFloat(el("hold-qty").value);
+  const price = parseFloat(el("hold-price").value);
+  if(!id || isNaN(qty) || isNaN(price)) { alert("Vul coin, qty en aankoopprijs in"); return; }
+  saveHoldingRow({id, qty, buyPrice: price});
+  el("hold-coin").value = ""; el("hold-qty").value=""; el("hold-price").value="";
+  renderHoldings();
+});
+
+// monitor: periodiek top10 refresh + holdings update
+el("startMonitor").addEventListener("click", () => {
+  const interval = parseInt(el("interval").value,10);
+  if(monitorHandle) clearInterval(monitorHandle);
+  log("Live monitor gestart");
+  refreshSelection(); // direct
+  renderHoldings();
+  monitorHandle = setInterval(async () => {
+    await refreshSelection();
+    await renderHoldings();
+  }, interval);
+});
+el("stopMonitor").addEventListener("click", () => {
+  if(monitorHandle) { clearInterval(monitorHandle); monitorHandle = null; log("Monitor gestopt"); }
 });
