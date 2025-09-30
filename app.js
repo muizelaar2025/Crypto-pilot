@@ -78,7 +78,7 @@ function renderTop10(list) {
   });
   container.querySelectorAll(".chart-btn").forEach(btn=>{
     btn.addEventListener("click", ()=>{
-      populateChartDropdown(); // zorg dat dropdown gevuld is
+      populateChartDropdown(); 
       el("chart-coin").value = btn.dataset.id;
       showTab('charts');
     });
@@ -93,7 +93,6 @@ async function refreshSelection() {
   const markets = await fetchMarkets(vs, 100);
   if(!markets) { log("Kon marktdata niet ophalen."); return; }
 
-  // adaptive behaviour: pas minimale volume aan op basis van succesrate
   const stats = loadSuccessStats();
   const successRate = stats.checked === 0 ? 0.6 : (stats.correct / (stats.checked || 1));
   let MIN_VOLUME = 5_000_000;
@@ -105,12 +104,13 @@ async function refreshSelection() {
   scored.sort((a,b)=>b.opportunity_score - a.opportunity_score);
   currentTop10 = scored.slice(0,10);
   renderTop10(currentTop10);
-  log(`Top10 bijgewerkt. (MIN_VOLUME=${MIN_VOLUME.toLocaleString()})`);
+
+  // grafiek dropdown automatisch updaten bij Top10-update
+  populateChartDropdown();
 }
 
 // ---------------- Holdings ----------------
 let holdings = [];
-
 function saveHoldingRow(h) {
   holdings.push(h);
   renderHoldings();
@@ -136,7 +136,8 @@ async function renderHoldings() {
   for(const h of holdings) {
     const price = await getPrice(h.id, vs);
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${h.id}</td><td>${h.qty}</td><td>${h.buyPrice.toFixed(4)}</td><td>${price!==null ? price.toLocaleString(undefined,{maximumFractionDigits:8}) : "?"}</td>
+    tr.innerHTML = `<td>${h.id}</td><td>${h.qty}</td><td>${h.buyPrice.toFixed(4)}</td>
+      <td>${price!==null ? price.toLocaleString(undefined,{maximumFractionDigits:8}) : "?"}</td>
       <td>---</td>
       <td>---</td>
       <td><button data-id="${h.id}" class="del">Verwijder</button></td>`;
@@ -164,13 +165,17 @@ async function loadChartData(coin, days, vs="eur"){
 }
 
 let chart = null;
-
 el("loadChart").addEventListener("click", async ()=>{
   const coin = el("chart-coin").value.trim().toLowerCase();
   const days = parseInt(el("chart-range").value,10);
   const vs = el("vsCurrency").value;
 
   if(!coin) { alert("Kies een coin uit de dropdown (Top10)"); return; }
+
+  if(!currentTop10 || currentTop10.length === 0){
+    alert("Top10 is leeg, ververs eerst de selectie.");
+    return;
+  }
 
   const prices = await loadChartData(coin, days, vs);
   if(!prices || prices.length === 0){
@@ -179,7 +184,6 @@ el("loadChart").addEventListener("click", async ()=>{
   }
 
   if(chart) chart.destroy();
-
   const ctx = document.getElementById("coinChart").getContext("2d");
   chart = new Chart(ctx,{
     type:"line",
@@ -197,21 +201,14 @@ el("loadChart").addEventListener("click", async ()=>{
     options:{
       responsive:true,
       scales:{
-        x:{
-          type:"time",
-          time:{ unit: days>90 ? "month" : "day" },
-          title: { display:true, text:"Datum" }
-        },
-        y:{
-          beginAtZero:false,
-          title: { display:true, text:"Prijs ("+vs.toUpperCase()+")" }
-        }
+        x:{ type:"time", time:{ unit: days>90 ? "month" : "day" }, title:{display:true,text:"Datum"} },
+        y:{ beginAtZero:false, title:{display:true,text:"Prijs ("+vs.toUpperCase()+")"} }
       }
     }
   });
 });
 
-// auto-fill chart dropdown
+// dropdown automatisch vullen
 function populateChartDropdown(){
   const sel = el("chart-coin");
   const prev = sel.value;
