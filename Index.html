@@ -1,14 +1,10 @@
-<div>
-  <label for="crypto">Cryptomunt (bv. bitcoin, ethereum):</label>
-  <input type="text" id="crypto" value="bitcoin" />
-  <br><br>
-  <label for="interval">Check-interval:</label>
-  <select id="interval">
-    <option value="10000">10 seconden</option>
-    <option value="30000" selected>30 seconden</option>
-    <option value="60000">1 minuut</option>
-    <option value="300000">5 minuten</option>
-  </select>
-  <br><br>
-  <button id="simulate">Start live monitoring</button>
+<div id="dashboard" style="margin-top:20px; padding:10px; border:1px solid #ccc; background:#f9f9f9;">
+  <h3>📊 Dashboard</h3>
+  <p>💰 Balans: <span id="balance">1000.00</span> EUR</p>
+  <p>🪙 Coins: <span id="coins">0</span></p>
+  <p>📈 Huidige waarde coins: <span id="coinValue">0.00</span> EUR</p>
+  <p>🔗 Totaal: <span id="totalValue">1000.00</span> EUR</p>
 </div>
+
+<h3 style="margin-top:20px;">📜 Logboek</h3>
+<div id="output"></div>
