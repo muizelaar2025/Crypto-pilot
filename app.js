@@ -1,4 +1,4 @@
-// app.js — Werkende versie: Top10, Holdings, Grafieken, Advies Log & Learning
+// app.js — Uitgebreide versie: Top10, Holdings, Grafieken, Advies Log & Simulaties
 const CG_API = "https://api.coingecko.com/api/v3";
 let monitorHandle = null;
 let currentTop10 = [];
@@ -78,7 +78,7 @@ function renderTop10(list) {
   });
   container.querySelectorAll(".chart-btn").forEach(btn=>{
     btn.addEventListener("click", ()=>{
-      populateChartDropdown(); 
+      populateChartDropdown();
       el("chart-coin").value = btn.dataset.id;
       showTab('charts');
     });
@@ -104,9 +104,29 @@ async function refreshSelection() {
   scored.sort((a,b)=>b.opportunity_score - a.opportunity_score);
   currentTop10 = scored.slice(0,10);
   renderTop10(currentTop10);
+  log(`Top10 bijgewerkt. (MIN_VOLUME=${MIN_VOLUME.toLocaleString()})`);
 
-  // grafiek dropdown automatisch updaten bij Top10-update
-  populateChartDropdown();
+  const AUTO_SCORE_THRESHOLD = 10;
+  const logs = loadAdviceLogs();
+  for(const coin of currentTop10){
+    if(coin.opportunity_score > AUTO_SCORE_THRESHOLD){
+      const exists = logs.some(l=>l.coin===coin.id && l.result==="?");
+      if(!exists){
+        const entry = {
+          time: new Date().toLocaleString(),
+          coin: coin.id,
+          advice: "Koop",
+          startPrice: coin.current_price,
+          currentPrice: coin.current_price,
+          result: "?"
+        };
+        logs.push(entry);
+        log(`🟢 Automatisch koopadvies toegevoegd voor ${coin.id} @ €${coin.current_price.toFixed(4)}`);
+      }
+    }
+  }
+  saveAdviceLogs(logs);
+  renderAdviceLog();
 }
 
 // ---------------- Holdings ----------------
@@ -115,7 +135,6 @@ function saveHoldingRow(h) {
   holdings.push(h);
   renderHoldings();
 }
-
 async function getPrice(coinId, vs="eur") {
   try {
     const url = `${CG_API}/simple/price?ids=${coinId}&vs_currencies=${vs}`;
@@ -128,18 +147,33 @@ async function getPrice(coinId, vs="eur") {
     return null;
   }
 }
-
+function adviceForHolding(h, currentPrice, isInTop10) {
+  const gross = (currentPrice - h.buyPrice) * h.qty;
+  const net = gross - TRANSACTION_FEE;
+  if(net > 0) {
+    if(isInTop10) return {advice:"Behouden", reason:`Winst (€${net.toFixed(2)}) + in top10`};
+    return {advice:"Behouden", reason:`Winst €${net.toFixed(2)}`};
+  } else {
+    if(isInTop10) return {advice:"Behouden", reason:`Verlies maar coin in top10`};
+    return {advice:"Verkopen", reason:`Verlies €${net.toFixed(2)}`};
+  }
+}
 async function renderHoldings() {
   const tbody = el("holdings-table").querySelector("tbody");
   tbody.innerHTML = "";
   const vs = el("vsCurrency").value;
   for(const h of holdings) {
     const price = await getPrice(h.id, vs);
+    const net = (price!==null) ? ((price - h.buyPrice) * h.qty - TRANSACTION_FEE) : null;
+    const inTop = currentTop10.some(c=>c.id===h.id);
+    const ad = (price!==null) ? adviceForHolding(h, price, inTop) : {advice:"?", reason:"geen data"};
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${h.id}</td><td>${h.qty}</td><td>${h.buyPrice.toFixed(4)}</td>
+    tr.innerHTML = `<td>${h.id}</td>
+      <td>${h.qty}</td>
+      <td>${h.buyPrice.toFixed(4)}</td>
       <td>${price!==null ? price.toLocaleString(undefined,{maximumFractionDigits:8}) : "?"}</td>
-      <td>---</td>
-      <td>---</td>
+      <td>${net!==null ? "€"+net.toFixed(2) : "?"}</td>
+      <td class="${ad.advice==='Behouden'?'advice-hold':'advice-sell'}">${ad.advice}<br><small>${ad.reason}</small></td>
       <td><button data-id="${h.id}" class="del">Verwijder</button></td>`;
     tbody.appendChild(tr);
   }
@@ -147,6 +181,79 @@ async function renderHoldings() {
     holdings = holdings.filter(x=>x.id!==b.dataset.id);
     renderHoldings();
   }));
+}
+
+// ---------------- Advice log ----------------
+function saveAdviceLogEntry(entry){
+  const logs = loadAdviceLogs();
+  logs.push(entry);
+  saveAdviceLogs(logs);
+  renderAdviceLog();
+}
+async function renderAdviceLog(){
+  const tbody = el("adviceTable").querySelector("tbody");
+  tbody.innerHTML="";
+  const logs = loadAdviceLogs();
+  const vs = el("vsCurrency").value;
+  for(let i=0;i<logs.length;i++){
+    const l = logs[i];
+    const price = await getPrice(l.coin, vs);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${l.time}</td>
+      <td>${l.coin}</td>
+      <td>${l.advice}</td>
+      <td>${l.startPrice !== undefined ? "€"+Number(l.startPrice).toFixed(4) : "?"}</td>
+      <td>${price!==null ? "€"+price.toFixed(4) : "?"}</td>
+      <td>${l.result}</td>
+      <td><button data-i="${i}" class="unfollow">Niet meer volgen</button></td>`;
+    tbody.appendChild(tr);
+  }
+  tbody.querySelectorAll(".unfollow").forEach(b=>b.addEventListener("click", ()=>{
+    const i = Number(b.dataset.i);
+    const logs2 = loadAdviceLogs();
+    logs2.splice(i,1);
+    saveAdviceLogs(logs2);
+    renderAdviceLog();
+  }));
+}
+
+// ---------------- Advice checking / learning ----------------
+async function updateAdviceResults(){
+  const logs = loadAdviceLogs();
+  const vs = el("vsCurrency").value;
+  let changed = false;
+  let stats = loadSuccessStats();
+
+  for(let i=0;i<logs.length;i++){
+    const l = logs[i];
+    if(l.result === "?"){
+      const current = await getPrice(l.coin, vs);
+      if(current === null) continue;
+      let correct = false;
+      if(l.advice.toLowerCase().includes("koop")) correct = current > l.startPrice;
+      if(l.advice.toLowerCase().includes("verkoop")) correct = current < l.startPrice;
+      if(correct){
+        logs[i].result = "✅";
+        stats.checked += 1; stats.correct += 1;
+        log(`✅ Advies CORRECT: ${l.coin} (${l.advice})`);
+      } else {
+        const diff = Math.abs((current - l.startPrice) / l.startPrice);
+        if(diff > 0.005){
+          logs[i].result = "❌";
+          stats.checked += 1;
+          log(`❌ Advies FOUT: ${l.coin} (${l.advice})`);
+        }
+      }
+      changed = true;
+    }
+  }
+
+  if(changed){
+    saveAdviceLogs(logs);
+    saveSuccessStats(stats);
+    renderAdviceLog();
+    updateSuccessRateUI();
+  }
 }
 
 // ---------------- Charts ----------------
@@ -164,51 +271,22 @@ async function loadChartData(coin, days, vs="eur"){
   }
 }
 
-let chart = null;
+let chart;
 el("loadChart").addEventListener("click", async ()=>{
   const coin = el("chart-coin").value.trim().toLowerCase();
-  const days = parseInt(el("chart-range").value,10);
+  const days = el("chart-range").value;
   const vs = el("vsCurrency").value;
-
   if(!coin) { alert("Kies een coin uit de dropdown (Top10)"); return; }
-
-  if(!currentTop10 || currentTop10.length === 0){
-    alert("Top10 is leeg, ververs eerst de selectie.");
-    return;
-  }
-
   const prices = await loadChartData(coin, days, vs);
-  if(!prices || prices.length === 0){
-    alert("Geen grafiekdata beschikbaar voor deze coin.");
-    return;
-  }
-
   if(chart) chart.destroy();
   const ctx = document.getElementById("coinChart").getContext("2d");
   chart = new Chart(ctx,{
     type:"line",
-    data:{
-      datasets:[{
-        label: `${coin} prijs`,
-        data: prices,
-        borderColor:"blue",
-        backgroundColor:"rgba(0,123,255,0.2)",
-        fill:true,
-        pointRadius:0,
-        tension:0.2
-      }]
-    },
-    options:{
-      responsive:true,
-      scales:{
-        x:{ type:"time", time:{ unit: days>90 ? "month" : "day" }, title:{display:true,text:"Datum"} },
-        y:{ beginAtZero:false, title:{display:true,text:"Prijs ("+vs.toUpperCase()+")"} }
-      }
-    }
+    data:{ datasets:[{ label: `${coin} prijs`, data:prices, borderColor:"blue", fill:false, pointRadius:0 }] },
+    options:{ scales:{ x:{ type:"time", time:{ unit: days>90 ? "month" : "day" } }, y:{ beginAtZero:false } } }
   });
 });
 
-// dropdown automatisch vullen
 function populateChartDropdown(){
   const sel = el("chart-coin");
   const prev = sel.value;
@@ -229,40 +307,4 @@ function populateChartDropdown(){
   }
 }
 
-el("autoChart").addEventListener("click", ()=>{
-  populateChartDropdown();
-  alert("Chart dropdown gevuld met Top10 (kies coin en klik 'Laad grafiek')");
-});
-
-// ---------------- UI wiring & monitor ----------------
-el("refreshSelection").addEventListener("click", refreshSelection);
-el("addHolding").addEventListener("click", ()=>{
-  const id = el("hold-coin").value.trim().toLowerCase();
-  const qty = parseFloat(el("hold-qty").value);
-  const price = parseFloat(el("hold-price").value);
-  if(!id || isNaN(qty) || isNaN(price)) { alert("Vul coin, qty en aankoopprijs in"); return; }
-  saveHoldingRow({id, qty, buyPrice: price});
-  el("hold-coin").value = ""; el("hold-qty").value=""; el("hold-price").value="";
-  renderHoldings();
-});
-
-el("startMonitor").addEventListener("click", () => {
-  const interval = parseInt(el("interval").value,10);
-  if(monitorHandle) clearInterval(monitorHandle);
-  log("Live monitor gestart");
-  refreshSelection(); 
-  renderHoldings();
-  monitorHandle = setInterval(async () => {
-    await refreshSelection();
-    await renderHoldings();
-  }, interval);
-});
-
-el("stopMonitor").addEventListener("click", () => {
-  if(monitorHandle) { clearInterval(monitorHandle); monitorHandle = null; log("Monitor gestopt"); }
-});
-
-// ---------------- On load ----------------
-(function init(){
-  populateChartDropdown();
-})();
+el("autoChart").addEventListener("click", ()=>{ populateChartDropdown(); alert("Chart dropdown gevuld met Top10 (kies coin en klik 'Laad graf
