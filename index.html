@@ -23,6 +23,7 @@
     th,td { padding:6px; border:1px solid #eee; text-align:left; }
     .small { font-size:0.85em; color:#555; }
     .controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+    h2,h3 { margin-top:16px; }
   </style>
 </head>
 <body>
@@ -32,6 +33,7 @@
     <button onclick="showTab('dashboard')">📊 Dashboard</button>
     <button onclick="showTab('charts')">📈 Grafiek</button>
     <button onclick="showTab('adviceLog')">🧾 Advies Analyse</button>
+    <button onclick="showTab('simulations')">💹 Simulaties</button>
   </nav>
 
   <!-- Dashboard tab -->
@@ -117,21 +119,46 @@
     </table>
   </div>
 
-  <!-- Chart.js laden via CDN -->
-  <script>
-    const chartScript = document.createElement("script");
-    chartScript.src = "https://cdn.jsdelivr.net/npm/chart.js?v=" + new Date().getTime();
-    chartScript.onload = () => console.log("Chart.js geladen");
-    document.head.appendChild(chartScript);
-  </script>
+  <!-- Simulaties tab -->
+  <div id="tab-simulations" class="tab">
+    <h2>💹 Simulaties</h2>
+    <div class="controls">
+      <button id="sim-start">▶️ Start simulatie</button>
+      <button id="sim-reset">🔄 Reset simulaties</button>
+    </div>
 
-  <!-- main app.js laden zonder cache -->
-  <script>
-    const appScript = document.createElement("script");
-    appScript.src = "app.js?v=" + new Date().getTime();
-    appScript.onload = () => console.log("app.js geladen");
-    document.head.appendChild(appScript);
-  </script>
+    <h3>Simulatie 1: Top10 aankopen</h3>
+    <div id="sim1-overview"></div>
+    <table id="sim1-table">
+      <thead>
+        <tr><th>Datum</th><th>Actie</th><th>Coin</th><th>Prijs</th><th>Aantal</th><th>Waarde</th><th>Winst/Verlies %</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <h3>Simulatie 2: Verwachte Top10 aankopen</h3>
+    <div id="sim2-overview"></div>
+    <table id="sim2-table">
+      <thead>
+        <tr><th>Datum</th><th>Actie</th><th>Coin</th><th>Prijs</th><th>Aantal</th><th>Waarde</th><th>Winst/Verlies %</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <h3>Simulatie 3: Vrije strategie</h3>
+    <div id="sim3-overview"></div>
+    <table id="sim3-table">
+      <thead>
+        <tr><th>Datum</th><th>Actie</th><th>Coin</th><th>Prijs</th><th>Aantal</th><th>Waarde</th><th>Winst/Verlies %</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- main app -->
+  <script src="app.js?v=5"></script>
 
   <!-- Service Worker registratie -->
   <script>
