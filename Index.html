@@ -6,6 +6,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: Arial, sans-serif; margin:20px; }
+    nav { margin-bottom: 15px; }
+    nav button { margin-right: 10px; padding: 6px 12px; }
+    .tab { display:none; }
+    .tab.active { display:block; }
     #output { margin-top:20px; max-height:200px; overflow:auto; border:1px solid #ccc; padding:10px; background:#fafafa; }
     .pill { background:#007bff; color:white; padding:2px 6px; border-radius:4px; font-size:0.8em; }
     .advice-hold { color: green; font-weight: bold; }
@@ -15,46 +19,88 @@
 <body>
   <h1>🚀 Crypto Pilot</h1>
 
-  <label>Valuta: 
-    <select id="vsCurrency">
-      <option value="eur" selected>EUR</option>
-      <option value="usd">USD</option>
-    </select>
-  </label>
+  <nav>
+    <button onclick="showTab('dashboard')">📊 Dashboard</button>
+    <button onclick="showTab('charts')">📈 Grafiek</button>
+    <button onclick="showTab('adviceLog')">🧾 Advies Analyse</button>
+  </nav>
 
-  <label>Interval:
-    <select id="interval">
-      <option value="10000">10 sec</option>
-      <option value="30000">30 sec</option>
-      <option value="60000" selected>1 min</option>
-      <option value="300000">5 min</option>
-    </select>
-  </label>
+  <!-- Dashboard tab -->
+  <div id="tab-dashboard" class="tab active">
+    <label>Valuta: 
+      <select id="vsCurrency">
+        <option value="eur" selected>EUR</option>
+        <option value="usd">USD</option>
+      </select>
+    </label>
 
-  <button id="refreshSelection">🔄 Ververs selectie</button>
-  <button id="startMonitor">▶️ Start monitor</button>
-  <button id="stopMonitor">⏹ Stop monitor</button>
+    <label>Interval:
+      <select id="interval">
+        <option value="10000">10 sec</option>
+        <option value="30000">30 sec</option>
+        <option value="60000" selected>1 min</option>
+        <option value="300000">5 min</option>
+      </select>
+    </label>
 
-  <h2>📊 Top 10 kansen</h2>
-  <div id="top10-list"></div>
+    <button id="refreshSelection">🔄 Ververs selectie</button>
+    <button id="startMonitor">▶️ Start monitor</button>
+    <button id="stopMonitor">⏹ Stop monitor</button>
 
-  <h2>📂 Holdings</h2>
-  <div>
-    <input type="text" id="hold-coin" placeholder="Coin id (bv. bitcoin)">
-    <input type="number" id="hold-qty" placeholder="Aantal" step="0.0001">
-    <input type="number" id="hold-price" placeholder="Aankoopprijs per stuk" step="0.01">
-    <button id="addHolding">➕ Toevoegen</button>
+    <h2>📊 Top 10 kansen</h2>
+    <div id="top10-list"></div>
+
+    <h2>📂 Holdings</h2>
+    <div>
+      <input type="text" id="hold-coin" placeholder="Coin id (bv. bitcoin)">
+      <input type="number" id="hold-qty" placeholder="Aantal" step="0.0001">
+      <input type="number" id="hold-price" placeholder="Aankoopprijs per stuk" step="0.01">
+      <button id="addHolding">➕ Toevoegen</button>
+    </div>
+    <table id="holdings-table" border="1" cellspacing="0" cellpadding="4">
+      <thead>
+        <tr><th>Coin</th><th>Aantal</th><th>Aankoopprijs</th><th>Huidige prijs</th><th>Winst/Verlies</th><th>Advies</th><th>Actie</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <h2>📜 Log</h2>
+    <div id="output"></div>
   </div>
-  <table id="holdings-table" border="1" cellspacing="0" cellpadding="4">
-    <thead>
-      <tr><th>Coin</th><th>Aantal</th><th>Aankoopprijs</th><th>Huidige prijs</th><th>Winst/Verlies</th><th>Advies</th><th>Actie</th></tr>
-    </thead>
-    <tbody></tbody>
-  </table>
 
-  <h2>📜 Log</h2>
-  <div id="output"></div>
+  <!-- Grafiek tab -->
+  <div id="tab-charts" class="tab">
+    <h2>📈 Grafiek bekijken</h2>
+    <label for="chart-coin">Coin:</label>
+    <input type="text" id="chart-coin" placeholder="bv. bitcoin">
 
-  <script src="app.js"></script>
+    <label for="chart-range">Periode:</label>
+    <select id="chart-range">
+      <option value="1">24 uur</option>
+      <option value="7">7 dagen</option>
+      <option value="30">30 dagen</option>
+      <option value="90">90 dagen</option>
+      <option value="365">1 jaar</option>
+    </select>
+
+    <button id="loadChart">Laad grafiek</button>
+    <canvas id="coinChart" width="400" height="200"></canvas>
+  </div>
+
+  <!-- Advies log tab -->
+  <div id="tab-adviceLog" class="tab">
+    <h2>🧾 Advies Analyse</h2>
+    <table id="adviceTable" border="1" cellspacing="0" cellpadding="4">
+      <thead>
+        <tr><th>Tijd</th><th>Coin</th><th>Advies</th><th>Prijs op advies</th><th>Resultaat</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <!-- Chart.js voor grafieken -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- jouw app code -->
+  <script src="app.js?v=4"></script>
 </body>
 </html>
