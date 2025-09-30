@@ -1,4 +1,4 @@
-// app.js — Live Top10 + Holdings & advies (CoinGecko)
+// app.js
 const CG_API = "https://api.coingecko.com/api/v3";
 let monitorHandle = null;
 let currentTop10 = [];
@@ -12,20 +12,25 @@ function log(msg){
   out.prepend(p); 
 }
 
+// Tabs
+function showTab(name){
+  document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+  document.getElementById("tab-"+name).classList.add("active");
+}
+
+// ====== MARKT DATA ======
 async function fetchMarkets(vs="eur", per_page=50) {
   const url = `${CG_API}/coins/markets?vs_currency=${vs}&order=market_cap_desc&per_page=${per_page}&page=1&sparkline=false&price_change_percentage=24h,7d`;
   try {
     const r = await fetch(url);
     if(!r.ok) throw new Error("HTTP "+r.status);
-    const data = await r.json();
-    return data; // array of coin objects
+    return await r.json();
   } catch(e){
     console.error("fetchMarkets error", e);
     return null;
   }
 }
 
-// eenvoudige score: 0.6*7d + 0.3*24h + 0.1*(norm(volume))
 function computeScores(coins) {
   const vols = coins.map(c => c.total_volume || 0);
   const logVols = vols.map(v => Math.log10((v||1)));
@@ -50,7 +55,6 @@ function renderTop10(list) {
       <button data-id="${c.id}" class="watch-btn">Volgen</button>`;
     container.appendChild(p);
   });
-  // watch buttons vullen automatisch het holdings-formulier
   container.querySelectorAll(".watch-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       el("hold-coin").value = btn.dataset.id;
@@ -65,8 +69,7 @@ async function refreshSelection() {
   const markets = await fetchMarkets(vs, 50);
   if(!markets) { log("Kon marktdata niet ophalen."); return; }
 
-  // filter coins met voldoende liquiditeit
-  const MIN_VOLUME = 5_000_000; // minimaal 5 miljoen in gekozen valuta (aanpasbaar)
+  const MIN_VOLUME = 5_000_000;
   const liquid = markets.filter(c => (c.total_volume || 0) >= MIN_VOLUME);
 
   const scored = computeScores(liquid);
@@ -76,7 +79,7 @@ async function refreshSelection() {
   log("Top10 bijgewerkt.");
 }
 
-// Holdings management
+// ====== HOLDINGS ======
 let holdings = []; // {id, qty, buyPrice}
 
 function saveHoldingRow(h) {
@@ -88,11 +91,9 @@ async function getPrice(coinId, vs="eur") {
   try {
     const url = `${CG_API}/simple/price?ids=${coinId}&vs_currencies=${vs}`;
     const r = await fetch(url);
-    if(!r.ok) throw new Error("HTTP "+r.status);
     const j = await r.json();
     return j[coinId] ? j[coinId][vs] : null;
   } catch(e){
-    console.error("getPrice err", e);
     return null;
   }
 }
@@ -102,14 +103,11 @@ function adviceForHolding(h, currentPrice, isInTop10) {
   const net = gross - TRANSACTION_FEE;
 
   if(net > 0) {
-    if(isInTop10) return {advice:"Behouden", reason:`Positief na fee (€${net.toFixed(2)}) + in top10`};
-    const tin = currentTop10.find(c=>c.id===h.id);
-    if(tin && tin.opportunity_score > 0) return {advice:"Behouden", reason:`Netto winst (€${net.toFixed(2)}) + score ${tin.opportunity_score.toFixed(2)}`};
-    if(net < Math.abs(0.01 * (h.buyPrice*h.qty))) return {advice:"Optioneel verkopen", reason:`Kleine winst (€${net.toFixed(2)}), score laag`};
-    return {advice:"Behouden", reason:`Netto winst €${net.toFixed(2)}`};
+    if(isInTop10) return {advice:"Behouden", reason:`Winst (€${net.toFixed(2)}) + in top10`};
+    return {advice:"Behouden", reason:`Winst €${net.toFixed(2)}`};
   } else {
-    if(isInTop10) return {advice:"Behouden", reason:`Verlies nu maar coin in top10 — kans op herstel`};
-    return {advice:"Verkopen", reason:`Netto verlies €${net.toFixed(2)}`};
+    if(isInTop10) return {advice:"Behouden", reason:`Verlies maar coin in top10`};
+    return {advice:"Verkopen", reason:`Verlies €${net.toFixed(2)}`};
   }
 }
 
@@ -121,7 +119,7 @@ async function renderHoldings() {
     const price = await getPrice(h.id, vs);
     const net = (price!==null) ? ((price - h.buyPrice) * h.qty - TRANSACTION_FEE) : null;
     const inTop = currentTop10.some(c=>c.id===h.id);
-    const ad = (price!==null) ? adviceForHolding(h, price, inTop) : {advice:"Onbekend", reason:"Kon prijs niet ophalen"};
+    const ad = (price!==null) ? adviceForHolding(h, price, inTop) : {advice:"?", reason:"geen data"};
     const tr = document.createElement("tr");
     tr.innerHTML = `<td>${h.id}</td>
       <td>${h.qty}</td>
@@ -133,13 +131,54 @@ async function renderHoldings() {
     tbody.appendChild(tr);
   }
   tbody.querySelectorAll(".del").forEach(b=>b.addEventListener("click", ()=>{
-    const id = b.dataset.id;
-    holdings = holdings.filter(x=>x.id!==id);
+    holdings = holdings.filter(x=>x.id!==b.dataset.id);
     renderHoldings();
   }));
 }
 
-// UI wiring
+// ====== ADVIES LOG ======
+function saveAdviceLog(coin, advice, price){
+  const logs = JSON.parse(localStorage.getItem("adviceLogs") || "[]");
+  logs.push({time:new Date().toLocaleString(), coin, advice, price, result:"?"});
+  localStorage.setItem("adviceLogs", JSON.stringify(logs));
+  renderAdviceLog();
+}
+
+function renderAdviceLog(){
+  const tbody = el("adviceTable").querySelector("tbody");
+  tbody.innerHTML="";
+  const logs = JSON.parse(localStorage.getItem("adviceLogs") || "[]");
+  logs.forEach(l=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${l.time}</td><td>${l.coin}</td><td>${l.advice}</td><td>${l.price}</td><td>${l.result}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ====== GRAFIEK ======
+async function loadChartData(coin, days, vs="eur"){
+  const url = `${CG_API}/coins/${coin}/market_chart?vs_currency=${vs}&days=${days}`;
+  const r = await fetch(url);
+  const data = await r.json();
+  return data.prices.map(p => ({x:new Date(p[0]), y:p[1]}));
+}
+
+let chart;
+el("loadChart").addEventListener("click", async ()=>{
+  const coin = el("chart-coin").value.trim().toLowerCase();
+  const days = el("chart-range").value;
+  const vs = el("vsCurrency").value;
+  const prices = await loadChartData(coin, days, vs);
+  if(chart) chart.destroy();
+  const ctx = document.getElementById("coinChart").getContext("2d");
+  chart = new Chart(ctx,{
+    type:"line",
+    data:{ datasets:[{ label: `${coin} prijs`, data:prices, borderColor:"blue", fill:false }] },
+    options:{ scales:{ x:{ type:"time", time:{ unit:"day" } }, y:{ beginAtZero:false } } }
+  });
+});
+
+// ====== EVENT BINDING ======
 el("refreshSelection").addEventListener("click", refreshSelection);
 el("addHolding").addEventListener("click", ()=>{
   const id = el("hold-coin").value.trim().toLowerCase();
@@ -151,7 +190,6 @@ el("addHolding").addEventListener("click", ()=>{
   renderHoldings();
 });
 
-// monitor: periodiek top10 refresh + holdings update
 el("startMonitor").addEventListener("click", () => {
   const interval = parseInt(el("interval").value,10);
   if(monitorHandle) clearInterval(monitorHandle);
@@ -163,6 +201,11 @@ el("startMonitor").addEventListener("click", () => {
     await renderHoldings();
   }, interval);
 });
+
 el("stopMonitor").addEventListener("click", () => {
   if(monitorHandle) { clearInterval(monitorHandle); monitorHandle = null; log("Monitor gestopt"); }
 });
+
+// start rendering log
+renderAdviceLog();
+
