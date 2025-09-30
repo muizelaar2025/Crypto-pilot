@@ -1,33 +1,29 @@
-// app.js — Geoptimaliseerd voor GitHub Pages & mobiel
-
+// app.js — Productieklaar: Top10, Holdings, Grafieken, Advies Log & Learning
 const CG_API = "https://api.coingecko.com/api/v3";
 let monitorHandle = null;
 let currentTop10 = [];
 const TRANSACTION_FEE = 5.0;
-const ADVICE_CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 uur
+const ADVICE_CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 uur check
 
-// ---------------- Helper functies ----------------
 function el(id){ return document.getElementById(id); }
-function log(msg){
-  const out = el("output");
-  const p = document.createElement("div");
-  p.textContent = `${new Date().toLocaleTimeString()} — ${msg}`;
-  out.prepend(p);
+function log(msg){ 
+  const out = el("output"); 
+  const p = document.createElement("div"); 
+  p.textContent = `${new Date().toLocaleTimeString()} — ${msg}`; 
+  out.prepend(p); 
 }
 
 // ---------------- Tabs ----------------
 function showTab(name){
   document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
-  el("tab-"+name).classList.add("active");
+  document.getElementById("tab-"+name).classList.add("active");
 }
 
-// ---------------- Local storage ----------------
+// ---------------- Local storage helpers ----------------
 function loadAdviceLogs(){ return JSON.parse(localStorage.getItem("adviceLogs") || "[]"); }
 function saveAdviceLogs(logs){ localStorage.setItem("adviceLogs", JSON.stringify(logs)); }
-
 function loadSuccessStats(){ return JSON.parse(localStorage.getItem("successStats") || '{"checked":0,"correct":0}'); }
 function saveSuccessStats(s){ localStorage.setItem("successStats", JSON.stringify(s)); }
-
 function updateSuccessRateUI(){
   const s = loadSuccessStats();
   const rate = s.checked === 0 ? "-" : ((s.correct / s.checked) * 100).toFixed(1) + "%";
@@ -35,41 +31,37 @@ function updateSuccessRateUI(){
 }
 
 // ---------------- Market data ----------------
-async function fetchMarkets(vs="eur", per_page=50){
-  const url = `${CG_API}/coins/markets?vs_currency=${vs}&order=market_cap_desc&per_page=${per_page}&page=1&sparkline=false&price_change_percentage=24h,7d`;
+async function fetchMarkets(vs="eur", per_page=50) {
   try {
-    const r = await fetch(url);
+    const r = await fetch(`${CG_API}/coins/markets?vs_currency=${vs}&order=market_cap_desc&per_page=${per_page}&page=1&sparkline=false&price_change_percentage=24h,7d`);
     if(!r.ok) throw new Error("HTTP "+r.status);
     return await r.json();
   } catch(e){
     console.error("fetchMarkets error", e);
-    log("Fout bij ophalen marktdata: "+e.message);
     return null;
   }
 }
 
-function computeScores(coins){
+function computeScores(coins) {
   const vols = coins.map(c => c.total_volume || 0);
   const logVols = vols.map(v => Math.log10((v||1)));
   const minV = Math.min(...logVols), maxV = Math.max(...logVols);
-
   return coins.map(c => {
     const ch7 = c.price_change_percentage_7d_in_currency || 0;
     const ch24 = c.price_change_percentage_24h_in_currency || 0;
     const lv = Math.log10((c.total_volume||1));
     const normVol = (maxV===minV) ? 0.5 : (lv - minV) / (maxV - minV);
-    const score = (0.6 * ch7) + (0.3 * ch24) + (5 * normVol);
+    const score = (0.6 * ch7) + (0.3 * ch24) + (5 * normVol); 
     return Object.assign({}, c, { opportunity_score: score });
   });
 }
 
-// ---------------- Render Top10 ----------------
-function renderTop10(list){
+// ---------------- Render top10 ----------------
+function renderTop10(list) {
   const container = el("top10-list");
   container.innerHTML = "";
   if(!list || list.length===0){ container.innerHTML = "<em>Geen resultaten</em>"; return; }
-
-  list.forEach((c,i)=>{
+  list.forEach((c, i) => {
     const p = document.createElement("p");
     p.innerHTML = `<span class="pill">${i+1}</span> <strong>${c.name} (${c.symbol.toUpperCase()})</strong>
       — prijs: ${c.current_price?.toLocaleString(undefined,{maximumFractionDigits:8})} • 7d: ${(c.price_change_percentage_7d_in_currency||0).toFixed(2)}% • score: ${c.opportunity_score.toFixed(2)}
@@ -97,11 +89,11 @@ function renderTop10(list){
 }
 
 // ---------------- Selection & adaptive filter ----------------
-async function refreshSelection(){
+async function refreshSelection() {
   const vs = el("vsCurrency").value;
   log("Selectie verversen…");
   const markets = await fetchMarkets(vs, 100);
-  if(!markets){ log("Kon marktdata niet ophalen."); return; }
+  if(!markets) { log("Kon marktdata niet ophalen."); return; }
 
   const stats = loadSuccessStats();
   const successRate = stats.checked === 0 ? 0.6 : (stats.correct / (stats.checked || 1));
@@ -113,11 +105,10 @@ async function refreshSelection(){
   const scored = computeScores(liquid);
   scored.sort((a,b)=>b.opportunity_score - a.opportunity_score);
   currentTop10 = scored.slice(0,10);
-
   renderTop10(currentTop10);
   log(`Top10 bijgewerkt. (MIN_VOLUME=${MIN_VOLUME.toLocaleString()})`);
 
-  // auto koopadvies
+  // automatische koopadviezen
   const AUTO_SCORE_THRESHOLD = 10;
   const logs = loadAdviceLogs();
   for(const coin of currentTop10){
@@ -144,15 +135,14 @@ async function refreshSelection(){
 // ---------------- Holdings ----------------
 let holdings = [];
 
-function saveHoldingRow(h){
+function saveHoldingRow(h) {
   holdings.push(h);
   renderHoldings();
 }
 
-async function getPrice(coinId, vs="eur"){
+async function getPrice(coinId, vs="eur") {
   try {
-    const url = `${CG_API}/simple/price?ids=${coinId}&vs_currencies=${vs}`;
-    const r = await fetch(url);
+    const r = await fetch(`${CG_API}/simple/price?ids=${coinId}&vs_currencies=${vs}`);
     if(!r.ok) throw new Error("HTTP "+r.status);
     const j = await r.json();
     return j[coinId] ? j[coinId][vs] : null;
@@ -162,30 +152,22 @@ async function getPrice(coinId, vs="eur"){
   }
 }
 
-function adviceForHolding(h, currentPrice, isInTop10){
+function adviceForHolding(h, currentPrice, isInTop10) {
   const gross = (currentPrice - h.buyPrice) * h.qty;
   const net = gross - TRANSACTION_FEE;
-
-  if(net > 0){
-    if(isInTop10) return {advice:"Behouden", reason:`Winst (€${net.toFixed(2)}) + in top10`};
-    return {advice:"Behouden", reason:`Winst €${net.toFixed(2)}`};
-  } else {
-    if(isInTop10) return {advice:"Behouden", reason:`Verlies maar coin in top10`};
-    return {advice:"Verkopen", reason:`Verlies €${net.toFixed(2)}`};
-  }
+  if(net > 0) return {advice:"Behouden", reason:`Winst (€${net.toFixed(2)})${isInTop10 ? " + in top10" : ""}`};
+  return {advice: isInTop10 ? "Behouden" : "Verkopen", reason:`Verlies €${net.toFixed(2)}${isInTop10 ? " maar coin in top10" : ""}`};
 }
 
-async function renderHoldings(){
+async function renderHoldings() {
   const tbody = el("holdings-table").querySelector("tbody");
   tbody.innerHTML = "";
   const vs = el("vsCurrency").value;
-
-  for(const h of holdings){
+  for(const h of holdings) {
     const price = await getPrice(h.id, vs);
     const net = (price!==null) ? ((price - h.buyPrice) * h.qty - TRANSACTION_FEE) : null;
     const inTop = currentTop10.some(c=>c.id===h.id);
     const ad = (price!==null) ? adviceForHolding(h, price, inTop) : {advice:"?", reason:"geen data"};
-
     const tr = document.createElement("tr");
     tr.innerHTML = `<td>${h.id}</td>
       <td>${h.qty}</td>
@@ -196,13 +178,10 @@ async function renderHoldings(){
       <td><button data-id="${h.id}" class="del">Verwijder</button></td>`;
     tbody.appendChild(tr);
   }
-
-  tbody.querySelectorAll(".del").forEach(b=>{
-    b.addEventListener("click", ()=>{
-      holdings = holdings.filter(x=>x.id!==b.dataset.id);
-      renderHoldings();
-    });
-  });
+  tbody.querySelectorAll(".del").forEach(b=>b.addEventListener("click", ()=>{
+    holdings = holdings.filter(x=>x.id!==b.dataset.id);
+    renderHoldings();
+  }));
 }
 
 // ---------------- Advice log ----------------
@@ -218,7 +197,6 @@ async function renderAdviceLog(){
   tbody.innerHTML="";
   const logs = loadAdviceLogs();
   const vs = el("vsCurrency").value;
-
   for(let i=0;i<logs.length;i++){
     const l = logs[i];
     const price = await getPrice(l.coin, vs);
@@ -232,19 +210,16 @@ async function renderAdviceLog(){
       <td><button data-i="${i}" class="unfollow">Niet meer volgen</button></td>`;
     tbody.appendChild(tr);
   }
-
-  tbody.querySelectorAll(".unfollow").forEach(b=>{
-    b.addEventListener("click", ()=>{
-      const i = Number(b.dataset.i);
-      const logs2 = loadAdviceLogs();
-      logs2.splice(i,1);
-      saveAdviceLogs(logs2);
-      renderAdviceLog();
-    });
-  });
+  tbody.querySelectorAll(".unfollow").forEach(b=>b.addEventListener("click", ()=>{
+    const i = Number(b.dataset.i);
+    const logs2 = loadAdviceLogs();
+    logs2.splice(i,1);
+    saveAdviceLogs(logs2);
+    renderAdviceLog();
+  }));
 }
 
-// ---------------- Advice checking ----------------
+// ---------------- Advice checking / learning ----------------
 async function updateAdviceResults(){
   const logs = loadAdviceLogs();
   const vs = el("vsCurrency").value;
@@ -256,11 +231,9 @@ async function updateAdviceResults(){
     if(l.result === "?"){
       const current = await getPrice(l.coin, vs);
       if(current === null) continue;
-
       let correct = false;
       if(l.advice.toLowerCase().includes("koop")) correct = current > l.startPrice;
       if(l.advice.toLowerCase().includes("verkoop")) correct = current < l.startPrice;
-
       if(correct){
         logs[i].result = "✅";
         stats.checked += 1; stats.correct += 1;
@@ -286,74 +259,26 @@ async function updateAdviceResults(){
 }
 
 // ---------------- Charts ----------------
-let chart;
-
 async function loadChartData(coin, days, vs="eur"){
   try {
     const url = `${CG_API}/coins/${coin}/market_chart?vs_currency=${vs}&days=${days}`;
     const r = await fetch(url);
     if(!r.ok) throw new Error("HTTP "+r.status);
     const data = await r.json();
-    if(!data.prices || data.prices.length===0) return [];
+    if(!data.prices) return [];
     return data.prices.map(p => ({x:new Date(p[0]), y:p[1]}));
   } catch(e){
     console.error("loadChartData", e);
-    alert("Fout bij laden grafiekdata: "+e.message);
     return [];
   }
 }
 
-el("loadChart").addEventListener("click", async ()=>{
-  const coin = el("chart-coin").value.trim().toLowerCase();
-  const days = el("chart-range").value;
-  const vs = el("vsCurrency").value;
+let chart;
 
-  if(!coin) { alert("Kies een coin uit de dropdown (Top10)"); return; }
-
-  const prices = await loadChartData(coin, days, vs);
-  if(!prices || prices.length===0){
-    alert("Geen grafiekdata ontvangen!");
-    return;
-  }
-
-  const canvas = el("coinChart");
-  if(!canvas){ alert("Canvas element niet gevonden!"); return; }
-  const ctx = canvas.getContext("2d");
-  if(!ctx){ alert("Kon canvas context niet krijgen!"); return; }
-
-  if(chart) chart.destroy();
-
-  chart = new Chart(ctx,{
-    type:"line",
-    data:{
-      datasets:[{
-        label: `${coin.toUpperCase()} prijs (${vs.toUpperCase()})`,
-        data: prices,
-        borderColor:"blue",
-        backgroundColor:"rgba(0,123,255,0.1)",
-        fill:true,
-        pointRadius:0,
-        tension:0.2
-      }]
-    },
-    options:{
-      responsive:true,
-      maintainAspectRatio:false,
-      scales:{
-        x:{ type:"time", time:{ unit: days>90 ? "month" : "day" }, title:{ display:true, text:"Datum" } },
-        y:{ beginAtZero:false, title:{ display:true, text:"Prijs ("+vs.toUpperCase()+")" } }
-      },
-      plugins:{ legend:{ display:true, position:"top" } }
-    }
-  });
-});
-
-// ---------------- Chart dropdown ----------------
 function populateChartDropdown(){
   const sel = el("chart-coin");
   const prev = sel.value;
   sel.innerHTML = "";
-
   if(currentTop10 && currentTop10.length>0){
     currentTop10.forEach(c=>{
       const opt = document.createElement("option");
@@ -369,11 +294,6 @@ function populateChartDropdown(){
     sel.appendChild(opt);
   }
 }
-
-el("autoChart").addEventListener("click", ()=>{
-  populateChartDropdown();
-  alert("Chart dropdown gevuld met Top10 (kies coin en klik 'Laad grafiek')");
-});
 
 // ---------------- UI wiring & monitor ----------------
 el("refreshSelection").addEventListener("click", refreshSelection);
@@ -393,4 +313,42 @@ el("startMonitor").addEventListener("click", () => {
   if(monitorHandle) clearInterval(monitorHandle);
   log("Live monitor gestart");
   refreshSelection(); 
-  renderHoldings
+  renderHoldings();
+  monitorHandle = setInterval(async () => {
+    await refreshSelection();
+    await renderHoldings();
+  }, interval);
+  if(!window._adviceChecker) window._adviceChecker = setInterval(updateAdviceResults, ADVICE_CHECK_INTERVAL_MS);
+});
+
+el("stopMonitor").addEventListener("click", () => {
+  if(monitorHandle) { clearInterval(monitorHandle); monitorHandle = null; log("Monitor gestopt"); }
+  if(window._adviceChecker){ clearInterval(window._adviceChecker); window._adviceChecker = null; }
+});
+
+el("loadChart").addEventListener("click", async ()=>{
+  const coin = el("chart-coin").value.trim().toLowerCase();
+  const days = el("chart-range").value;
+  const vs = el("vsCurrency").value;
+  if(!coin) { alert("Kies een coin uit de dropdown (Top10)"); return; }
+  const prices = await loadChartData(coin, days, vs);
+  if(chart) chart.destroy();
+  const ctx = document.getElementById("coinChart").getContext("2d");
+  chart = new Chart(ctx,{
+    type:"line",
+    data:{ datasets:[{ label: `${coin} prijs`, data:prices, borderColor:"blue", fill:false, pointRadius:0 }] },
+    options:{ scales:{ x:{ type:"time", time:{ unit: days>90 ? "month" : "day" } }, y:{ beginAtZero:false } } }
+  });
+});
+
+el("autoChart").addEventListener("click", ()=>{ 
+  populateChartDropdown(); 
+  alert("Chart dropdown gevuld met Top10 (kies coin en klik 'Laad grafiek')"); 
+});
+
+// ---------------- On load ----------------
+(function init(){
+  renderAdviceLog();
+  updateSuccessRateUI();
+  populateChartDropdown();
+})();
