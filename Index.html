@@ -10,10 +10,14 @@
     nav button { margin-right: 10px; padding: 6px 12px; }
     .tab { display:none; }
     .tab.active { display:block; }
-    #output { margin-top:20px; max-height:200px; overflow:auto; border:1px solid #ccc; padding:10px; background:#fafafa; }
+    #output { margin-top:12px; max-height:200px; overflow:auto; border:1px solid #ccc; padding:10px; background:#fafafa; }
     .pill { background:#007bff; color:white; padding:2px 6px; border-radius:4px; font-size:0.8em; }
     .advice-hold { color: green; font-weight: bold; }
     .advice-sell { color: red; font-weight: bold; }
+    table { width:100%; border-collapse:collapse; margin-top:8px; }
+    th,td { padding:6px; border:1px solid #eee; text-align:left; }
+    .small { font-size:0.85em; color:#555; }
+    .controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
   </style>
 </head>
 <body>
@@ -27,39 +31,45 @@
 
   <!-- Dashboard tab -->
   <div id="tab-dashboard" class="tab active">
-    <label>Valuta: 
-      <select id="vsCurrency">
-        <option value="eur" selected>EUR</option>
-        <option value="usd">USD</option>
-      </select>
-    </label>
+    <div class="controls">
+      <label>Valuta:
+        <select id="vsCurrency">
+          <option value="eur" selected>EUR</option>
+          <option value="usd">USD</option>
+        </select>
+      </label>
 
-    <label>Interval:
-      <select id="interval">
-        <option value="10000">10 sec</option>
-        <option value="30000">30 sec</option>
-        <option value="60000" selected>1 min</option>
-        <option value="300000">5 min</option>
-      </select>
-    </label>
+      <label>Interval:
+        <select id="interval">
+          <option value="10000">10 sec</option>
+          <option value="30000">30 sec</option>
+          <option value="60000" selected>1 min</option>
+          <option value="300000">5 min</option>
+        </select>
+      </label>
 
-    <button id="refreshSelection">🔄 Ververs selectie</button>
-    <button id="startMonitor">▶️ Start monitor</button>
-    <button id="stopMonitor">⏹ Stop monitor</button>
+      <button id="refreshSelection">🔄 Ververs selectie</button>
+      <button id="startMonitor">▶️ Start monitor</button>
+      <button id="stopMonitor">⏹ Stop monitor</button>
+      <div style="margin-left:auto;">
+        <span class="small">Succesrate: <strong id="successRate">-</strong></span>
+      </div>
+    </div>
 
     <h2>📊 Top 10 kansen</h2>
-    <div id="top10-list"></div>
+    <div id="top10-list"><em>Geen selectie geladen — klik "Ververs selectie".</em></div>
 
     <h2>📂 Holdings</h2>
-    <div>
+    <div class="controls">
       <input type="text" id="hold-coin" placeholder="Coin id (bv. bitcoin)">
       <input type="number" id="hold-qty" placeholder="Aantal" step="0.0001">
       <input type="number" id="hold-price" placeholder="Aankoopprijs per stuk" step="0.01">
       <button id="addHolding">➕ Toevoegen</button>
+      <div class="small">Tip: klik "Volgen" in Top10 om coin automatisch te vullen.</div>
     </div>
-    <table id="holdings-table" border="1" cellspacing="0" cellpadding="4">
+    <table id="holdings-table">
       <thead>
-        <tr><th>Coin</th><th>Aantal</th><th>Aankoopprijs</th><th>Huidige prijs</th><th>Winst/Verlies</th><th>Advies</th><th>Actie</th></tr>
+        <tr><th>Coin</th><th>Aantal</th><th>Aank.prijs</th><th>Huid.prijs</th><th>Winst/Verlies</th><th>Advies</th><th>Actie</th></tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -71,36 +81,40 @@
   <!-- Grafiek tab -->
   <div id="tab-charts" class="tab">
     <h2>📈 Grafiek bekijken</h2>
-    <label for="chart-coin">Coin:</label>
-    <input type="text" id="chart-coin" placeholder="bv. bitcoin">
+    <div class="controls">
+      <label for="chart-coin">Coin:</label>
+      <select id="chart-coin"></select>
 
-    <label for="chart-range">Periode:</label>
-    <select id="chart-range">
-      <option value="1">24 uur</option>
-      <option value="7">7 dagen</option>
-      <option value="30">30 dagen</option>
-      <option value="90">90 dagen</option>
-      <option value="365">1 jaar</option>
-    </select>
+      <label for="chart-range">Periode:</label>
+      <select id="chart-range">
+        <option value="1">24 uur</option>
+        <option value="7" selected>7 dagen</option>
+        <option value="30">30 dagen</option>
+        <option value="90">90 dagen</option>
+        <option value="365">1 jaar</option>
+      </select>
 
-    <button id="loadChart">Laad grafiek</button>
+      <button id="loadChart">Laad grafiek</button>
+      <button id="autoChart">Auto voeg Top10</button>
+    </div>
     <canvas id="coinChart" width="400" height="200"></canvas>
   </div>
 
   <!-- Advies log tab -->
   <div id="tab-adviceLog" class="tab">
     <h2>🧾 Advies Analyse</h2>
-    <table id="adviceTable" border="1" cellspacing="0" cellpadding="4">
+    <div class="small">Je kunt adviesregels verwijderen (niet meer volgen). Adviezen worden dagelijks automatisch gecontroleerd.</div>
+    <table id="adviceTable">
       <thead>
-        <tr><th>Tijd</th><th>Coin</th><th>Advies</th><th>Prijs op advies</th><th>Resultaat</th></tr>
+        <tr><th>Tijd advies</th><th>Coin</th><th>Advies</th><th>Startprijs</th><th>Huid.prijs</th><th>Resultaat</th><th>Actie</th></tr>
       </thead>
       <tbody></tbody>
     </table>
   </div>
 
-  <!-- Chart.js voor grafieken -->
+  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- jouw app code -->
-  <script src="app.js?v=4"></script>
+  <!-- main app (cache-busted) -->
+  <script src="app.js?v=5"></script>
 </body>
 </html>
