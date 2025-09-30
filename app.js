@@ -1,9 +1,9 @@
-// app.js — Uitgebreide versie: Top10, Holdings, Grafieken, Advies Log & Learning
+// app.js — Werkende versie: Top10, Holdings, Grafieken, Advies Log & Learning
 const CG_API = "https://api.coingecko.com/api/v3";
 let monitorHandle = null;
 let currentTop10 = [];
 const TRANSACTION_FEE = 5.0;
-const ADVICE_CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 uur check van adviezen (voor demo); in productie kan dit 24h zijn
+const ADVICE_CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 uur check van adviezen
 
 function el(id){ return document.getElementById(id); }
 function log(msg){ 
@@ -96,9 +96,8 @@ async function refreshSelection() {
   // adaptive behaviour: pas minimale volume aan op basis van succesrate
   const stats = loadSuccessStats();
   const successRate = stats.checked === 0 ? 0.6 : (stats.correct / (stats.checked || 1));
-  // als succesRate laag (<50%) -> maak selectie strenger (vereis meer volume)
   let MIN_VOLUME = 5_000_000;
-  if(successRate < 0.5) MIN_VOLUME *= 1.5; // conservatiever
+  if(successRate < 0.5) MIN_VOLUME *= 1.5;
   if(successRate < 0.35) MIN_VOLUME *= 2.0;
 
   const liquid = markets.filter(c => (c.total_volume || 0) >= MIN_VOLUME);
@@ -110,7 +109,7 @@ async function refreshSelection() {
 }
 
 // ---------------- Holdings ----------------
-let holdings = []; // {id, qty, buyPrice}
+let holdings = [];
 
 function saveHoldingRow(h) {
   holdings.push(h);
@@ -164,23 +163,55 @@ async function loadChartData(coin, days, vs="eur"){
   }
 }
 
-let chart;
+let chart = null;
+
 el("loadChart").addEventListener("click", async ()=>{
   const coin = el("chart-coin").value.trim().toLowerCase();
-  const days = el("chart-range").value;
+  const days = parseInt(el("chart-range").value,10);
   const vs = el("vsCurrency").value;
+
   if(!coin) { alert("Kies een coin uit de dropdown (Top10)"); return; }
+
   const prices = await loadChartData(coin, days, vs);
+  if(!prices || prices.length === 0){
+    alert("Geen grafiekdata beschikbaar voor deze coin.");
+    return;
+  }
+
   if(chart) chart.destroy();
+
   const ctx = document.getElementById("coinChart").getContext("2d");
   chart = new Chart(ctx,{
     type:"line",
-    data:{ datasets:[{ label: `${coin} prijs`, data:prices, borderColor:"blue", fill:false, pointRadius:0 }] },
-    options:{ scales:{ x:{ type:"time", time:{ unit: days>90 ? "month" : "day" } }, y:{ beginAtZero:false } } }
+    data:{
+      datasets:[{
+        label: `${coin} prijs`,
+        data: prices,
+        borderColor:"blue",
+        backgroundColor:"rgba(0,123,255,0.2)",
+        fill:true,
+        pointRadius:0,
+        tension:0.2
+      }]
+    },
+    options:{
+      responsive:true,
+      scales:{
+        x:{
+          type:"time",
+          time:{ unit: days>90 ? "month" : "day" },
+          title: { display:true, text:"Datum" }
+        },
+        y:{
+          beginAtZero:false,
+          title: { display:true, text:"Prijs ("+vs.toUpperCase()+")" }
+        }
+      }
+    }
   });
 });
 
-// auto-fill chart dropdown with currentTop10
+// auto-fill chart dropdown
 function populateChartDropdown(){
   const sel = el("chart-coin");
   const prev = sel.value;
@@ -200,6 +231,11 @@ function populateChartDropdown(){
     sel.appendChild(opt);
   }
 }
+
+el("autoChart").addEventListener("click", ()=>{
+  populateChartDropdown();
+  alert("Chart dropdown gevuld met Top10 (kies coin en klik 'Laad grafiek')");
+});
 
 // ---------------- UI wiring & monitor ----------------
 el("refreshSelection").addEventListener("click", refreshSelection);
