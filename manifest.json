@@ -1,10 +1,11 @@
 {
   "name": "Crypto Pilot App",
   "short_name": "CryptoPilot",
-  "start_url": "index.html",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#0d6efd",
+  "description": "Realtime crypto monitoring app met Top10 kansen, holdings, grafieken en adviesanalyse.",
   "icons": [
     {
       "src": "icon.png",
