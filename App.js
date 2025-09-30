@@ -5,7 +5,12 @@ let currentTop10 = [];
 const TRANSACTION_FEE = 5.0;
 
 function el(id){ return document.getElementById(id); }
-function log(msg){ const out = el("output"); const p = document.createElement("div"); p.textContent = `${new Date().toLocaleTimeString()} — ${msg}`; out.prepend(p); }
+function log(msg){ 
+  const out = el("output"); 
+  const p = document.createElement("div"); 
+  p.textContent = `${new Date().toLocaleTimeString()} — ${msg}`; 
+  out.prepend(p); 
+}
 
 async function fetchMarkets(vs="eur", per_page=50) {
   const url = `${CG_API}/coins/markets?vs_currency=${vs}&order=market_cap_desc&per_page=${per_page}&page=1&sparkline=false&price_change_percentage=24h,7d`;
@@ -22,7 +27,6 @@ async function fetchMarkets(vs="eur", per_page=50) {
 
 // eenvoudige score: 0.6*7d + 0.3*24h + 0.1*(norm(volume))
 function computeScores(coins) {
-  // normalize volume (log scale) to avoid domination
   const vols = coins.map(c => c.total_volume || 0);
   const logVols = vols.map(v => Math.log10((v||1)));
   const minV = Math.min(...logVols), maxV = Math.max(...logVols);
@@ -31,7 +35,7 @@ function computeScores(coins) {
     const ch24 = c.price_change_percentage_24h_in_currency || 0;
     const lv = Math.log10((c.total_volume||1));
     const normVol = (maxV===minV) ? 0.5 : (lv - minV) / (maxV - minV);
-    const score = (0.6 * ch7) + (0.3 * ch24) + (5 * normVol); // weights tuned for demo
+    const score = (0.6 * ch7) + (0.3 * ch24) + (5 * normVol); 
     return Object.assign({}, c, { opportunity_score: score });
   });
 }
@@ -42,11 +46,11 @@ function renderTop10(list) {
   list.forEach((c, i) => {
     const p = document.createElement("p");
     p.innerHTML = `<span class="pill">${i+1}</span> <strong>${c.name} (${c.symbol.toUpperCase()})</strong>
-      — prijs: ${c.current_price?.toLocaleString(undefined,{maximumFractionDigits:8})} • 7d: ${ (c.price_change_percentage_7d_in_currency||0).toFixed(2)}% • score: ${c.opportunity_score.toFixed(2)}
+      — prijs: ${c.current_price?.toLocaleString(undefined,{maximumFractionDigits:8})} • 7d: ${(c.price_change_percentage_7d_in_currency||0).toFixed(2)}% • score: ${c.opportunity_score.toFixed(2)}
       <button data-id="${c.id}" class="watch-btn">Volgen</button>`;
     container.appendChild(p);
   });
-  // attach watch buttons
+  // watch buttons vullen automatisch het holdings-formulier
   container.querySelectorAll(".watch-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       el("hold-coin").value = btn.dataset.id;
@@ -60,7 +64,12 @@ async function refreshSelection() {
   log("Selectie verversen…");
   const markets = await fetchMarkets(vs, 50);
   if(!markets) { log("Kon marktdata niet ophalen."); return; }
-  const scored = computeScores(markets);
+
+  // filter coins met voldoende liquiditeit
+  const MIN_VOLUME = 5_000_000; // minimaal 5 miljoen in gekozen valuta (aanpasbaar)
+  const liquid = markets.filter(c => (c.total_volume || 0) >= MIN_VOLUME);
+
+  const scored = computeScores(liquid);
   scored.sort((a,b)=>b.opportunity_score - a.opportunity_score);
   currentTop10 = scored.slice(0,10);
   renderTop10(currentTop10);
@@ -88,25 +97,19 @@ async function getPrice(coinId, vs="eur") {
   }
 }
 
-function adviceForHolding(h, currentPrice, isInTop10, vs) {
-  // winst na fee:
+function adviceForHolding(h, currentPrice, isInTop10) {
   const gross = (currentPrice - h.buyPrice) * h.qty;
   const net = gross - TRANSACTION_FEE;
-  // heuristiek:
-  // - Als netto winst > 0 -> meestal behouden, tenzij score sterk negatief
-  // - Als netto winst <= 0 -> adviseren verkopen tenzij coin in top10
-  // - Als coin in top10 -> extra bias naar "Behouden"
+
   if(net > 0) {
     if(isInTop10) return {advice:"Behouden", reason:`Positief na fee (€${net.toFixed(2)}) + in top10`};
-    // compute future bias from currentTop10 scores
     const tin = currentTop10.find(c=>c.id===h.id);
-    if(tin && tin.opportunity_score > 0) return {advice:"Behouden", reason:`Positief na fee (€${net.toFixed(2)}) en score=${tin.opportunity_score.toFixed(2)}`};
-    // small profit but weak score
-    if(net < Math.abs(0.01 * (h.buyPrice*h.qty))) return {advice:"Optioneel verkopen", reason:`Kleine netto winst (€${net.toFixed(2)}), score laag`};
+    if(tin && tin.opportunity_score > 0) return {advice:"Behouden", reason:`Netto winst (€${net.toFixed(2)}) + score ${tin.opportunity_score.toFixed(2)}`};
+    if(net < Math.abs(0.01 * (h.buyPrice*h.qty))) return {advice:"Optioneel verkopen", reason:`Kleine winst (€${net.toFixed(2)}), score laag`};
     return {advice:"Behouden", reason:`Netto winst €${net.toFixed(2)}`};
   } else {
     if(isInTop10) return {advice:"Behouden", reason:`Verlies nu maar coin in top10 — kans op herstel`};
-    return {advice:"Verkopen", reason:`Netto verlies €${net.toFixed(2)} — overweeg verkopen`};
+    return {advice:"Verkopen", reason:`Netto verlies €${net.toFixed(2)}`};
   }
 }
 
@@ -116,11 +119,9 @@ async function renderHoldings() {
   const vs = el("vsCurrency").value;
   for(const h of holdings) {
     const price = await getPrice(h.id, vs);
-    const currentVal = (price!==null) ? price * h.qty : null;
-    const gross = (price!==null) ? (price - h.buyPrice) * h.qty : null;
-    const net = (gross!==null) ? gross - TRANSACTION_FEE : null;
+    const net = (price!==null) ? ((price - h.buyPrice) * h.qty - TRANSACTION_FEE) : null;
     const inTop = currentTop10.some(c=>c.id===h.id);
-    const ad = (price!==null) ? adviceForHolding(h, price, inTop, vs) : {advice:"Onbekend", reason:"Kon prijs niet ophalen"};
+    const ad = (price!==null) ? adviceForHolding(h, price, inTop) : {advice:"Onbekend", reason:"Kon prijs niet ophalen"};
     const tr = document.createElement("tr");
     tr.innerHTML = `<td>${h.id}</td>
       <td>${h.qty}</td>
@@ -131,8 +132,7 @@ async function renderHoldings() {
       <td><button data-id="${h.id}" class="del">Verwijder</button></td>`;
     tbody.appendChild(tr);
   }
-  // delete handlers
-  tbody.querySelectorAll(".del").forEach(b=>b.addEventListener("click", ev=>{
+  tbody.querySelectorAll(".del").forEach(b=>b.addEventListener("click", ()=>{
     const id = b.dataset.id;
     holdings = holdings.filter(x=>x.id!==id);
     renderHoldings();
@@ -156,7 +156,7 @@ el("startMonitor").addEventListener("click", () => {
   const interval = parseInt(el("interval").value,10);
   if(monitorHandle) clearInterval(monitorHandle);
   log("Live monitor gestart");
-  refreshSelection(); // direct
+  refreshSelection(); 
   renderHoldings();
   monitorHandle = setInterval(async () => {
     await refreshSelection();
