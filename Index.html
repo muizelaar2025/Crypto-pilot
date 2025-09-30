@@ -1,28 +1,14 @@
-<!DOCTYPE html>
-<html lang="nl">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Crypto Pilot PWA Live</title>
-  <link rel="manifest" href="manifest.json" />
-  <meta name="theme-color" content="#0d6efd" />
-</head>
-<body>
-  <h1>🚀 Crypto Pilot App (Live Data)</h1>
-  <div>
-    <label for="crypto">Cryptomunt (bv. bitcoin, ethereum):</label>
-    <input type="text" id="crypto" value="bitcoin" />
-    <button id="simulate">Start simulatie</button>
-  </div>
-  <div id="output"></div>
-
-  <script src="app.js"></script>
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/service-worker.js')
-        .then(() => console.log('SW geregistreerd'))
-        .catch(err => console.error('SW fout:', err));
-    }
-  </script>
-</body>
-</html>
+<div>
+  <label for="crypto">Cryptomunt (bv. bitcoin, ethereum):</label>
+  <input type="text" id="crypto" value="bitcoin" />
+  <br><br>
+  <label for="interval">Check-interval:</label>
+  <select id="interval">
+    <option value="10000">10 seconden</option>
+    <option value="30000" selected>30 seconden</option>
+    <option value="60000">1 minuut</option>
+    <option value="300000">5 minuten</option>
+  </select>
+  <br><br>
+  <button id="simulate">Start live monitoring</button>
+</div>
