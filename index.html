@@ -1,150 +1,147 @@
 <!DOCTYPE html>
 <html lang="nl">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Crypto Pilot PWA</title>
-
-  <link rel="manifest" href="manifest.json">
-  <link rel="icon" href="icon.png">
-
+  <meta charset="UTF-8">
+  <title>Crypto Monitor & Simulator</title>
   <style>
-    body{font-family:Arial,Helvetica,sans-serif;margin:20px}
-    nav{margin-bottom:15px}
-    nav button{margin-right:8px;padding:6px 10px}
-    .tab{display:none}
-    .tab.active{display:block}
-    .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
-    .pill{background:#007bff;color:#fff;padding:2px 6px;border-radius:4px;font-size:0.85em}
-    table{width:100%;border-collapse:collapse;margin-top:8px}
-    th,td{padding:6px;border:1px solid #eee;text-align:left}
-    #output{margin-top:12px;max-height:200px;overflow:auto;border:1px solid #ccc;padding:10px;background:#fafafa}
-    .advice-hold{color:green;font-weight:bold}
-    .advice-sell{color:red;font-weight:bold}
-    .small{font-size:0.9em;color:#555}
-    h2,h3{margin-top:16px}
-    .sim-overview{margin-bottom:8px}
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    nav { margin-bottom: 10px; }
+    nav button { margin-right: 5px; }
+    section { display: none; margin-top: 20px; }
+    section.active { display: block; }
+    #output { margin-top: 20px; max-height: 200px; overflow-y: auto; background: #f9f9f9; border: 1px solid #ccc; padding: 10px; }
+    .pill { background:#eee; border-radius:10px; padding:2px 6px; margin-right:5px; }
+    .advice-hold { color: green; }
+    .advice-sell { color: red; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 6px; text-align: left; font-size: 14px; }
+    canvas { max-width: 100%; }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <h1>🚀 Crypto Pilot</h1>
+  <h1>Crypto Monitor & Simulator</h1>
 
+  <!-- Navigatie -->
   <nav>
-    <button onclick="showTab('dashboard')">📊 Dashboard</button>
-    <button onclick="showTab('charts')">📈 Grafiek</button>
-    <button onclick="showTab('adviceLog')">🧾 Advies Analyse</button>
-    <button onclick="showTab('simulations')">💹 Simulaties</button>
+    <button onclick="showTab('top10')">Top 10</button>
+    <button onclick="showTab('holdings')">Holdings</button>
+    <button onclick="showTab('charts')">Grafieken</button>
+    <button onclick="showTab('advice')">Advieslog</button>
+    <button onclick="showTab('simulation')">Simulatie</button>
   </nav>
 
-  <!-- Dashboard -->
-  <div id="tab-dashboard" class="tab active">
-    <div class="controls">
-      <label>Valuta:
-        <select id="vsCurrency"><option value="eur" selected>EUR</option><option value="usd">USD</option></select>
-      </label>
-
-      <label>Interval:
-        <select id="interval">
-          <option value="10000">10s</option>
-          <option value="30000">30s</option>
-          <option value="60000" selected>1m</option>
-          <option value="300000">5m</option>
-        </select>
-      </label>
-
-      <button id="refreshSelection">🔄 Ververs selectie</button>
-      <button id="startMonitor">▶️ Start monitor</button>
-      <button id="stopMonitor">⏹ Stop monitor</button>
-
-      <div style="margin-left:auto"><span class="small">Succesrate: <strong id="successRate">-</strong></span></div>
-    </div>
-
-    <h2>📊 Top 10 kansen</h2>
-    <div id="top10-list"><em>Geen selectie geladen — klik "Ververs selectie".</em></div>
-
-    <h2>📂 Holdings</h2>
-    <div class="controls">
-      <input id="hold-coin" type="text" placeholder="Coin id (bv. bitcoin)">
-      <input id="hold-qty" type="number" placeholder="Aantal" step="0.0001">
-      <input id="hold-price" type="number" placeholder="Aankoopprijs" step="0.01">
-      <button id="addHolding">➕ Toevoegen</button>
-      <div class="small">Tip: klik "Volgen" in Top10 om coin automatisch te vullen.</div>
-    </div>
-    <table id="holdings-table">
-      <thead><tr><th>Coin</th><th>Aantal</th><th>Aank.prijs</th><th>Huid.prijs</th><th>Winst/Verlies</th><th>Advies</th><th>Actie</th></tr></thead>
-      <tbody></tbody>
-    </table>
-
-    <h2>📜 Log</h2>
-    <div id="output"></div>
-  </div>
-
-  <!-- Charts -->
-  <div id="tab-charts" class="tab">
-    <h2>📈 Grafiek</h2>
-    <div class="controls">
-      <label for="chart-coin">Coin:</label>
-      <select id="chart-coin"></select>
-
-      <label for="chart-range">Periode:</label>
-      <select id="chart-range">
-        <option value="1">24 uur</option>
-        <option value="7" selected>7 dagen</option>
-        <option value="30">30 dagen</option>
-        <option value="90">90 dagen</option>
-        <option value="365">1 jaar</option>
+  <!-- Tabblad Top 10 -->
+  <section id="top10" class="active">
+    <h2>Top 10 selectie</h2>
+    <label>Valuta:
+      <select id="vsCurrency">
+        <option value="eur">EUR</option>
+        <option value="usd">USD</option>
       </select>
+    </label>
+    <button id="refreshSelection">Refresh selectie</button>
+    <br><br>
+    <label>Interval (ms): <input type="number" id="interval" value="60000"></label>
+    <button id="startMonitor">Start monitor</button>
+    <button id="stopMonitor">Stop monitor</button>
+    <div id="top10-list"></div>
+  </section>
 
-      <button id="loadChart">Laad grafiek</button>
-      <button id="autoChart">Auto voeg Top10</button>
-    </div>
-    <canvas id="coinChart" width="800" height="300"></canvas>
-  </div>
+  <!-- Tabblad Holdings -->
+  <section id="holdings">
+    <h2>Mijn holdings</h2>
+    <label>Coin: <input type="text" id="hold-coin" placeholder="bijv. bitcoin"></label>
+    <label>Qty: <input type="number" id="hold-qty" step="any"></label>
+    <label>Koopprijs: <input type="number" id="hold-price" step="any"></label>
+    <button id="addHolding">Toevoegen</button>
 
-  <!-- Advice log -->
-  <div id="tab-adviceLog" class="tab">
-    <h2>🧾 Advies Analyse</h2>
-    <div class="small">Adviezen worden periodiek gecontroleerd.</div>
-    <table id="adviceTable">
-      <thead><tr><th>Tijd</th><th>Coin</th><th>Advies</th><th>Startprijs</th><th>Huid.prijs</th><th>Resultaat</th><th>Actie</th></tr></thead>
+    <table id="holdings-table">
+      <thead>
+        <tr>
+          <th>Coin</th><th>Qty</th><th>Koopprijs</th><th>Huidige prijs</th><th>Netto resultaat</th><th>Advies</th><th>Actie</th>
+        </tr>
+      </thead>
       <tbody></tbody>
     </table>
-  </div>
+  </section>
 
-  <!-- Simulations -->
-  <div id="tab-simulations" class="tab">
-    <h2>💹 Simulaties</h2>
+  <!-- Tabblad Grafieken -->
+  <section id="charts">
+    <h2>Grafiek</h2>
+    <label>Coin:
+      <select id="chart-coin"></select>
+    </label>
+    <label>Dagen:
+      <select id="chart-range">
+        <option value="7">7</option>
+        <option value="30">30</option>
+        <option value="90">90</option>
+        <option value="180">180</option>
+        <option value="365">365</option>
+      </select>
+    </label>
+    <button id="loadChart">Laad grafiek</button>
+    <button id="autoChart">Laad uit Top10</button>
+    <canvas id="coinChart" width="600" height="300"></canvas>
+  </section>
 
-    <div class="controls">
-      <button id="sim-start">▶️ Start simulatie (30 dagen)</button>
-      <button id="sim-stop">⏸️ Stop simulatie</button>
-      <button id="sim-reset">🔄 Reset simulatie</button>
-      <label style="margin-left:auto" class="small">Startkapitaal per simulatie: €1500 — Bijstorting 1e vd maand: €150</label>
-    </div>
+  <!-- Tabblad Advieslog -->
+  <section id="advice">
+    <h2>Advieslog</h2>
+    <p>Succespercentage: <span id="successRate">-</span></p>
+    <table id="adviceTable">
+      <thead>
+        <tr>
+          <th>Tijd</th><th>Coin</th><th>Advies</th><th>Startprijs</th><th>Huidige prijs</th><th>Resultaat</th><th>Actie</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
 
-    <div class="sim-overview" id="sim-overviews">
-      <!-- will be filled by JS -->
-    </div>
+  <!-- Tabblad Simulatie -->
+  <section id="simulation">
+    <h2>Simulatie (start €1500, maandelijkse bijstorting €150)</h2>
+    <div id="sim-overviews"></div>
+    <button id="sim-start">Start simulatie (30 dagen)</button>
+    <button id="sim-stop">Stop simulatie</button>
+    <button id="sim-reset">Reset simulatie</button>
 
-    <h3>Simulatie 1 — Vrije strategie</h3>
-    <table id="sim1-table"><thead><tr><th>Dag</th><th>Actie</th><th>Coin</th><th>Aantal</th><th>Prijs</th><th>Winst/Verlies</th><th>Cash</th><th>Portefeuille</th></tr></thead><tbody></tbody></table>
+    <h3>Sim1 — Vrije strategie</h3>
+    <table id="sim1-table">
+      <thead>
+        <tr><th>Dag</th><th>Actie</th><th>Coin</th><th>Qty</th><th>Prijs</th><th>Profit%</th><th>Cash</th><th>Portefeuille</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
 
-    <h3>Simulatie 2 — Verwachte Top10</h3>
-    <table id="sim2-table"><thead><tr><th>Dag</th><th>Actie</th><th>Coin</th><th>Aantal</th><th>Prijs</th><th>Winst/Verlies</th><th>Cash</th><th>Portefeuille</th></tr></thead><tbody></tbody></table>
+    <h3>Sim2 — Verwachte Top10 movers</h3>
+    <table id="sim2-table">
+      <thead>
+        <tr><th>Dag</th><th>Actie</th><th>Coin</th><th>Qty</th><th>Prijs</th><th>Profit%</th><th>Cash</th><th>Portefeuille</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
 
-    <h3>Simulatie 3 — Top10 aankopen</h3>
-    <table id="sim3-table"><thead><tr><th>Dag</th><th>Actie</th><th>Coin</th><th>Aantal</th><th>Prijs</th><th>Winst/Verlies</th><th>Cash</th><th>Portefeuille</th></tr></thead><tbody></tbody></table>
-  </div>
+    <h3>Sim3 — Top10 aankopen</h3>
+    <table id="sim3-table">
+      <thead>
+        <tr><th>Dag</th><th>Actie</th><th>Coin</th><th>Qty</th><th>Prijs</th><th>Profit%</th><th>Cash</th><th>Portefeuille</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
 
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <!-- app -->
-  <script src="app.js?v=1"></script>
+  <!-- Log output -->
+  <div id="output"></div>
 
   <script>
-    if('serviceWorker' in navigator){
-      navigator.serviceWorker.register('service-worker.js').catch(()=>{/* ignore */});
+    function showTab(id){
+      document.querySelectorAll("section").forEach(s => s.classList.remove("active"));
+      document.getElementById(id).classList.add("active");
     }
   </script>
+  <script src="app.js" defer></script>
 </body>
 </html>
