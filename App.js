@@ -17,6 +17,7 @@ let lastPrice = null;
 const transactionFee = 5.0;
 let coinId = "bitcoin"; // standaard
 let monitorInterval = null; // hier slaan we de interval op
+let currentPrice = 0;
 
 function log(message) {
   const output = document.getElementById("output");
@@ -25,43 +26,55 @@ function log(message) {
   output.prepend(p); // nieuwste bovenaan
 }
 
+function updateDashboard() {
+  const coinValue = coins * currentPrice;
+  const total = balance + coinValue;
+
+  document.getElementById("balance").textContent = balance.toFixed(2);
+  document.getElementById("coins").textContent = coins;
+  document.getElementById("coinValue").textContent = coinValue.toFixed(2);
+  document.getElementById("totalValue").textContent = total.toFixed(2);
+}
+
 async function checkMarket() {
-  let price = await getLivePrice(coinId, "eur");
-  if (price === null) {
+  currentPrice = await getLivePrice(coinId, "eur");
+  if (currentPrice === null) {
     log(`❌ Kon prijs niet ophalen (${coinId})`);
     return;
   }
 
   if (lastPrice === null) {
-    lastPrice = price;
-    log(`ℹ️ Startprijs voor ${coinId}: €${price.toFixed(2)}`);
+    lastPrice = currentPrice;
+    log(`ℹ️ Startprijs voor ${coinId}: €${currentPrice.toFixed(2)}`);
+    updateDashboard();
     return;
   }
 
-  let change = (price - lastPrice) / lastPrice;
+  let change = (currentPrice - lastPrice) / lastPrice;
   let advice = "";
 
-  if (change < -0.05 && balance > price + transactionFee) {
+  if (change < -0.05 && balance > currentPrice + transactionFee) {
     // KOOP
-    let coinsBought = Math.floor((balance - transactionFee) / price);
+    let coinsBought = Math.floor((balance - transactionFee) / currentPrice);
     if (coinsBought > 0) {
-      let cost = coinsBought * price + transactionFee;
+      let cost = coinsBought * currentPrice + transactionFee;
       balance -= cost;
       coins += coinsBought;
-      advice = `📉 Koop ${coinsBought} ${coinId} @ €${price.toFixed(2)} | Balans: €${balance.toFixed(2)} | Coins: ${coins}`;
+      advice = `📉 Koop ${coinsBought} ${coinId} @ €${currentPrice.toFixed(2)}`;
     }
   } else if (change > 0.07 && coins > 0) {
     // VERKOOP
-    let proceeds = coins * price - transactionFee;
+    let proceeds = coins * currentPrice - transactionFee;
     balance += proceeds;
-    advice = `📈 Verkoop ${coins} ${coinId} @ €${price.toFixed(2)} | Nieuwe balans: €${balance.toFixed(2)}`;
+    advice = `📈 Verkoop ${coins} ${coinId} @ €${currentPrice.toFixed(2)}`;
     coins = 0;
   } else {
-    advice = `⏳ Geen actie | ${coinId}: €${price.toFixed(2)}`;
+    advice = `⏳ Geen actie | ${coinId}: €${currentPrice.toFixed(2)}`;
   }
 
   log(advice);
-  lastPrice = price;
+  lastPrice = currentPrice;
+  updateDashboard();
 }
 
 // Start live monitoring
@@ -73,6 +86,8 @@ document.getElementById("simulate").addEventListener("click", () => {
   balance = 1000.0;
   coins = 0;
   lastPrice = null;
+
+  updateDashboard();
 
   // stop eerdere interval als die nog loopt
   if (monitorInterval) {
