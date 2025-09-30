@@ -1,8 +1,9 @@
-// app.js
+// app.js — Uitgebreide versie: Top10, Holdings, Grafieken, Advies Log & Learning
 const CG_API = "https://api.coingecko.com/api/v3";
 let monitorHandle = null;
 let currentTop10 = [];
 const TRANSACTION_FEE = 5.0;
+const ADVICE_CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 uur check van adviezen (voor demo); in productie kan dit 24h zijn
 
 function el(id){ return document.getElementById(id); }
 function log(msg){ 
@@ -12,13 +13,24 @@ function log(msg){
   out.prepend(p); 
 }
 
-// Tabs
+// ---------------- Tabs ----------------
 function showTab(name){
   document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
   document.getElementById("tab-"+name).classList.add("active");
 }
 
-// ====== MARKT DATA ======
+// ---------------- Local storage helpers ----------------
+function loadAdviceLogs(){ return JSON.parse(localStorage.getItem("adviceLogs") || "[]"); }
+function saveAdviceLogs(logs){ localStorage.setItem("adviceLogs", JSON.stringify(logs)); }
+function loadSuccessStats(){ return JSON.parse(localStorage.getItem("successStats") || '{"checked":0,"correct":0}'); }
+function saveSuccessStats(s){ localStorage.setItem("successStats", JSON.stringify(s)); }
+function updateSuccessRateUI(){
+  const s = loadSuccessStats();
+  const rate = s.checked === 0 ? "-" : ((s.correct / s.checked) * 100).toFixed(1) + "%";
+  el("successRate").textContent = rate;
+}
+
+// ---------------- Market data ----------------
 async function fetchMarkets(vs="eur", per_page=50) {
   const url = `${CG_API}/coins/markets?vs_currency=${vs}&order=market_cap_desc&per_page=${per_page}&page=1&sparkline=false&price_change_percentage=24h,7d`;
   try {
@@ -45,14 +57,17 @@ function computeScores(coins) {
   });
 }
 
+// ---------------- Render top10 ----------------
 function renderTop10(list) {
   const container = el("top10-list");
   container.innerHTML = "";
+  if(!list || list.length===0){ container.innerHTML = "<em>Geen resultaten</em>"; return; }
   list.forEach((c, i) => {
     const p = document.createElement("p");
     p.innerHTML = `<span class="pill">${i+1}</span> <strong>${c.name} (${c.symbol.toUpperCase()})</strong>
       — prijs: ${c.current_price?.toLocaleString(undefined,{maximumFractionDigits:8})} • 7d: ${(c.price_change_percentage_7d_in_currency||0).toFixed(2)}% • score: ${c.opportunity_score.toFixed(2)}
-      <button data-id="${c.id}" class="watch-btn">Volgen</button>`;
+      <button data-id="${c.id}" class="watch-btn">Volgen</button>
+      <button data-id="${c.id}" class="chart-btn">Grafiek</button>`;
     container.appendChild(p);
   });
   container.querySelectorAll(".watch-btn").forEach(btn => {
@@ -61,25 +76,66 @@ function renderTop10(list) {
       el("hold-qty").focus();
     });
   });
+  container.querySelectorAll(".chart-btn").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      populateChartDropdown(); // zorg dat dropdown gevuld is
+      el("chart-coin").value = btn.dataset.id;
+      showTab('charts');
+    });
+  });
+  populateChartDropdown();
 }
 
+// ---------------- Selection & adaptive filter ----------------
 async function refreshSelection() {
   const vs = el("vsCurrency").value;
   log("Selectie verversen…");
-  const markets = await fetchMarkets(vs, 50);
+  const markets = await fetchMarkets(vs, 100);
   if(!markets) { log("Kon marktdata niet ophalen."); return; }
 
-  const MIN_VOLUME = 5_000_000;
-  const liquid = markets.filter(c => (c.total_volume || 0) >= MIN_VOLUME);
+  // adaptive behaviour: pas minimale volume aan op basis van succesrate
+  const stats = loadSuccessStats();
+  const successRate = stats.checked === 0 ? 0.6 : (stats.correct / (stats.checked || 1));
+  // als succesRate laag (<50%) -> maak selectie strenger (vereis meer volume)
+  let MIN_VOLUME = 5_000_000;
+  if(successRate < 0.5) MIN_VOLUME *= 1.5; // conservatiever
+  if(successRate < 0.35) MIN_VOLUME *= 2.0;
 
+  const liquid = markets.filter(c => (c.total_volume || 0) >= MIN_VOLUME);
   const scored = computeScores(liquid);
   scored.sort((a,b)=>b.opportunity_score - a.opportunity_score);
   currentTop10 = scored.slice(0,10);
   renderTop10(currentTop10);
-  log("Top10 bijgewerkt.");
+  log(`Top10 bijgewerkt. (MIN_VOLUME=${MIN_VOLUME.toLocaleString()})`);
+
+  // automatisch genereren van koopadviezen voor coins met hoge score
+  // drempel: opportunity_score > 10 (kan aangepast)
+  const AUTO_SCORE_THRESHOLD = 10;
+  const logs = loadAdviceLogs();
+  for(const coin of currentTop10){
+    if(coin.opportunity_score > AUTO_SCORE_THRESHOLD){
+      // check of er al een open advies voor deze coin is (result="?")
+      const exists = logs.some(l=>l.coin===coin.id && l.result==="?");
+      if(!exists){
+        // maak koopadvies entry
+        const entry = {
+          time: new Date().toLocaleString(),
+          coin: coin.id,
+          advice: "Koop",
+          startPrice: coin.current_price,
+          currentPrice: coin.current_price,
+          result: "?" // nog onbekend
+        };
+        logs.push(entry);
+        log(`🟢 Automatisch koopadvies toegevoegd voor ${coin.id} @ €${coin.current_price.toFixed(4)}`);
+      }
+    }
+  }
+  saveAdviceLogs(logs);
+  renderAdviceLog();
 }
 
-// ====== HOLDINGS ======
+// ---------------- Holdings ----------------
 let holdings = []; // {id, qty, buyPrice}
 
 function saveHoldingRow(h) {
@@ -91,9 +147,11 @@ async function getPrice(coinId, vs="eur") {
   try {
     const url = `${CG_API}/simple/price?ids=${coinId}&vs_currencies=${vs}`;
     const r = await fetch(url);
+    if(!r.ok) throw new Error("HTTP "+r.status);
     const j = await r.json();
     return j[coinId] ? j[coinId][vs] : null;
   } catch(e){
+    console.error("getPrice err", e);
     return null;
   }
 }
@@ -136,31 +194,100 @@ async function renderHoldings() {
   }));
 }
 
-// ====== ADVIES LOG ======
-function saveAdviceLog(coin, advice, price){
-  const logs = JSON.parse(localStorage.getItem("adviceLogs") || "[]");
-  logs.push({time:new Date().toLocaleString(), coin, advice, price, result:"?"});
-  localStorage.setItem("adviceLogs", JSON.stringify(logs));
+// ---------------- Advice log ----------------
+function saveAdviceLogEntry(entry){
+  const logs = loadAdviceLogs();
+  logs.push(entry);
+  saveAdviceLogs(logs);
   renderAdviceLog();
 }
 
-function renderAdviceLog(){
+async function renderAdviceLog(){
   const tbody = el("adviceTable").querySelector("tbody");
   tbody.innerHTML="";
-  const logs = JSON.parse(localStorage.getItem("adviceLogs") || "[]");
-  logs.forEach(l=>{
-    const tr=document.createElement("tr");
-    tr.innerHTML=`<td>${l.time}</td><td>${l.coin}</td><td>${l.advice}</td><td>${l.price}</td><td>${l.result}</td>`;
+  const logs = loadAdviceLogs();
+  const vs = el("vsCurrency").value;
+  for(let i=0;i<logs.length;i++){
+    const l = logs[i];
+    // update current price display (but do not change stored startPrice)
+    const price = await getPrice(l.coin, vs);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${l.time}</td>
+      <td>${l.coin}</td>
+      <td>${l.advice}</td>
+      <td>${l.startPrice !== undefined ? "€"+Number(l.startPrice).toFixed(4) : "?"}</td>
+      <td>${price!==null ? "€"+price.toFixed(4) : "?"}</td>
+      <td>${l.result}</td>
+      <td><button data-i="${i}" class="unfollow">Niet meer volgen</button></td>`;
     tbody.appendChild(tr);
-  });
+  }
+  // attach unfollow handlers
+  tbody.querySelectorAll(".unfollow").forEach(b=>b.addEventListener("click", ()=>{
+    const i = Number(b.dataset.i);
+    const logs2 = loadAdviceLogs();
+    logs2.splice(i,1);
+    saveAdviceLogs(logs2);
+    renderAdviceLog();
+  }));
 }
 
-// ====== GRAFIEK ======
+// ---------------- Advice checking / learning ----------------
+async function updateAdviceResults(){
+  const logs = loadAdviceLogs();
+  const vs = el("vsCurrency").value;
+  let changed = false;
+  let stats = loadSuccessStats();
+
+  for(let i=0;i<logs.length;i++){
+    const l = logs[i];
+    if(l.result === "?"){ // alleen open adviezen controleren
+      const current = await getPrice(l.coin, vs);
+      if(current === null) continue;
+      // eenvoudige check:
+      // - koopadvies: goed als current > startPrice
+      // - verkoopadvies: goed als current < startPrice
+      let correct = false;
+      if(l.advice.toLowerCase().includes("koop")) correct = current > l.startPrice;
+      if(l.advice.toLowerCase().includes("verkoop")) correct = current < l.startPrice;
+      if(correct){
+        logs[i].result = "✅";
+        stats.checked += 1; stats.correct += 1;
+        log(`✅ Advies CORRECT: ${l.coin} (${l.advice})`);
+      } else {
+        // nog niet beslist / we kunnen ook direct markeren als fout als bijv. na X tijd; nu markeren direct als ❌ als tegen?
+        // Voor demo: markeer direct als ❌ als move tegen is >0.5% (voorkom spammen)
+        const diff = Math.abs((current - l.startPrice) / l.startPrice);
+        if(diff > 0.005){ // 0.5% beweging tegen
+          logs[i].result = "❌";
+          stats.checked += 1;
+          log(`❌ Advies FOUT: ${l.coin} (${l.advice})`);
+        } // anders blijft '?'
+      }
+      changed = true;
+    }
+  }
+
+  if(changed){
+    saveAdviceLogs(logs);
+    saveSuccessStats(stats);
+    renderAdviceLog();
+    updateSuccessRateUI();
+  }
+}
+
+// ---------------- Charts ----------------
 async function loadChartData(coin, days, vs="eur"){
-  const url = `${CG_API}/coins/${coin}/market_chart?vs_currency=${vs}&days=${days}`;
-  const r = await fetch(url);
-  const data = await r.json();
-  return data.prices.map(p => ({x:new Date(p[0]), y:p[1]}));
+  try {
+    const url = `${CG_API}/coins/${coin}/market_chart?vs_currency=${vs}&days=${days}`;
+    const r = await fetch(url);
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    const data = await r.json();
+    if(!data.prices) return [];
+    return data.prices.map(p => ({x:new Date(p[0]), y:p[1]}));
+  } catch(e){
+    console.error("loadChartData", e);
+    return [];
+  }
 }
 
 let chart;
@@ -168,17 +295,42 @@ el("loadChart").addEventListener("click", async ()=>{
   const coin = el("chart-coin").value.trim().toLowerCase();
   const days = el("chart-range").value;
   const vs = el("vsCurrency").value;
+  if(!coin) { alert("Kies een coin uit de dropdown (Top10)"); return; }
   const prices = await loadChartData(coin, days, vs);
   if(chart) chart.destroy();
   const ctx = document.getElementById("coinChart").getContext("2d");
   chart = new Chart(ctx,{
     type:"line",
-    data:{ datasets:[{ label: `${coin} prijs`, data:prices, borderColor:"blue", fill:false }] },
-    options:{ scales:{ x:{ type:"time", time:{ unit:"day" } }, y:{ beginAtZero:false } } }
+    data:{ datasets:[{ label: `${coin} prijs`, data:prices, borderColor:"blue", fill:false, pointRadius:0 }] },
+    options:{ scales:{ x:{ type:"time", time:{ unit: days>90 ? "month" : "day" } }, y:{ beginAtZero:false } } }
   });
 });
 
-// ====== EVENT BINDING ======
+// auto-fill chart dropdown with currentTop10
+function populateChartDropdown(){
+  const sel = el("chart-coin");
+  const prev = sel.value;
+  sel.innerHTML = "";
+  if(currentTop10 && currentTop10.length>0){
+    currentTop10.forEach(c=>{
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = `${c.name} (${c.id})`;
+      sel.appendChild(opt);
+    });
+    if(prev) sel.value = prev;
+  } else {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "Laad eerst Top10 (Refresh selection)";
+    sel.appendChild(opt);
+  }
+}
+
+// auto add all top10 to chart dropdown (button)
+el("autoChart").addEventListener("click", ()=>{ populateChartDropdown(); alert("Chart dropdown gevuld met Top10 (kies coin en klik 'Laad grafiek')"); });
+
+// ---------------- UI wiring & monitor ----------------
 el("refreshSelection").addEventListener("click", refreshSelection);
 el("addHolding").addEventListener("click", ()=>{
   const id = el("hold-coin").value.trim().toLowerCase();
@@ -200,12 +352,21 @@ el("startMonitor").addEventListener("click", () => {
     await refreshSelection();
     await renderHoldings();
   }, interval);
+  // advies-check timer (runs more rarely)
+  if(!window._adviceChecker) window._adviceChecker = setInterval(updateAdviceResults, ADVICE_CHECK_INTERVAL_MS);
 });
 
 el("stopMonitor").addEventListener("click", () => {
   if(monitorHandle) { clearInterval(monitorHandle); monitorHandle = null; log("Monitor gestopt"); }
+  if(window._adviceChecker){ clearInterval(window._adviceChecker); window._adviceChecker = null; }
 });
 
-// start rendering log
-renderAdviceLog();
-
+// ---------------- On load ----------------
+(function init(){
+  renderAdviceLog();
+  updateSuccessRateUI();
+  populateChartDropdown();
+  // run an initial refresh so UI isn't empty
+  // but don't auto-start monitor
+  // refreshSelection();
+})();
