@@ -1,69 +1,60 @@
 <!DOCTYPE html>
 <html lang="nl">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Crypto Pilot PWA — Top10 & Holdings</title>
-  <link rel="manifest" href="manifest.json" />
-  <meta name="theme-color" content="#0d6efd" />
+  <meta charset="UTF-8">
+  <title>Crypto Pilot PWA</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body { font-family: system-ui, -apple-system, Arial; margin: 16px; }
-    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-    button { padding:8px 12px; border-radius:8px; border:1px solid #ccc; background:#fff; }
-    table { width:100%; border-collapse:collapse; margin-top:10px; }
-    th,td { padding:8px; border-bottom:1px solid #eee; text-align:left; }
-    .pill { padding:4px 8px; border-radius:999px; background:#f1f5f9; }
-    #top10-list p { margin:6px 0; }
-    .advice-hold { color:green; font-weight:600; }
-    .advice-sell { color:crimson; font-weight:600; }
+    body { font-family: Arial, sans-serif; margin:20px; }
+    #output { margin-top:20px; max-height:200px; overflow:auto; border:1px solid #ccc; padding:10px; background:#fafafa; }
+    .pill { background:#007bff; color:white; padding:2px 6px; border-radius:4px; font-size:0.8em; }
+    .advice-hold { color: green; font-weight: bold; }
+    .advice-sell { color: red; font-weight: bold; }
   </style>
 </head>
 <body>
-  <h1>🚀 Crypto Pilot — Live Top10 & Holdings</h1>
+  <h1>🚀 Crypto Pilot</h1>
 
-  <div class="row">
-    <label>Valuta:</label>
-    <select id="vsCurrency"><option value="eur">EUR</option><option value="usd">USD</option></select>
-
-    <label>Verdedigingsinterval:</label>
-    <select id="interval">
-      <option value="10000">10s</option>
-      <option value="30000" selected>30s</option>
-      <option value="60000">1m</option>
-      <option value="300000">5m</option>
+  <label>Valuta: 
+    <select id="vsCurrency">
+      <option value="eur" selected>EUR</option>
+      <option value="usd">USD</option>
     </select>
+  </label>
 
-    <button id="refreshSelection">Refresh selection (top 10)</button>
-    <button id="startMonitor">Start live monitor</button>
-    <button id="stopMonitor">Stop monitor</button>
+  <label>Interval:
+    <select id="interval">
+      <option value="10000">10 sec</option>
+      <option value="30000">30 sec</option>
+      <option value="60000" selected>1 min</option>
+      <option value="300000">5 min</option>
+    </select>
+  </label>
+
+  <button id="refreshSelection">🔄 Ververs selectie</button>
+  <button id="startMonitor">▶️ Start monitor</button>
+  <button id="stopMonitor">⏹ Stop monitor</button>
+
+  <h2>📊 Top 10 kansen</h2>
+  <div id="top10-list"></div>
+
+  <h2>📂 Holdings</h2>
+  <div>
+    <input type="text" id="hold-coin" placeholder="Coin id (bv. bitcoin)">
+    <input type="number" id="hold-qty" placeholder="Aantal" step="0.0001">
+    <input type="number" id="hold-price" placeholder="Aankoopprijs per stuk" step="0.01">
+    <button id="addHolding">➕ Toevoegen</button>
   </div>
+  <table id="holdings-table" border="1" cellspacing="0" cellpadding="4">
+    <thead>
+      <tr><th>Coin</th><th>Aantal</th><th>Aankoopprijs</th><th>Huidige prijs</th><th>Winst/Verlies</th><th>Advies</th><th>Actie</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
-  <section style="margin-top:18px;">
-    <h3>🔎 Huidige Top 10 (opportunity score)</h3>
-    <div id="top10-list"><em>Geen selectie geladen — klik "Refresh selection".</em></div>
-  </section>
-
-  <section style="margin-top:18px;">
-    <h3>💼 Je holdings invoeren</h3>
-    <div class="row">
-      <input id="hold-coin" placeholder="Coin id (bv. bitcoin)" />
-      <input id="hold-qty" placeholder="Aantal (bv. 0.5)" type="number" step="any" />
-      <input id="hold-price" placeholder="Aankoopprijs per coin (in gekozen valuta)" type="number" step="any" />
-      <button id="addHolding">Toevoegen</button>
-    </div>
-
-    <table id="holdings-table">
-      <thead><tr><th>Coin</th><th>Aantal</th><th>Aank.prijs</th><th>Huid.prijs</th><th>Winst (na €5)</th><th>Advies</th><th></th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </section>
-
-  <section style="margin-top:18px;">
-    <h3>📜 Logboek</h3>
-    <div id="output"></div>
-  </section>
+  <h2>📜 Log</h2>
+  <div id="output"></div>
 
   <script src="app.js"></script>
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWork
+</body>
+</html>
