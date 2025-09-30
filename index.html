@@ -9,10 +9,11 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icon.png">
 
+  <!-- Basis styling -->
   <style>
     body { font-family: Arial, sans-serif; margin:20px; }
     nav { margin-bottom: 15px; }
-    nav button { margin-right: 10px; padding: 6px 12px; }
+    nav button { margin-right: 10px; padding: 6px 12px; cursor:pointer; }
     .tab { display:none; }
     .tab.active { display:block; }
     #output { margin-top:12px; max-height:200px; overflow:auto; border:1px solid #ccc; padding:10px; background:#fafafa; }
@@ -28,13 +29,14 @@
 <body>
   <h1>🚀 Crypto Pilot</h1>
 
+  <!-- Navigatie tabs -->
   <nav>
     <button onclick="showTab('dashboard')">📊 Dashboard</button>
     <button onclick="showTab('charts')">📈 Grafiek</button>
     <button onclick="showTab('adviceLog')">🧾 Advies Analyse</button>
   </nav>
 
-  <!-- Dashboard tab -->
+  <!-- ---------------- Dashboard ---------------- -->
   <div id="tab-dashboard" class="tab active">
     <div class="controls">
       <label>Valuta:
@@ -56,6 +58,7 @@
       <button id="refreshSelection">🔄 Ververs selectie</button>
       <button id="startMonitor">▶️ Start monitor</button>
       <button id="stopMonitor">⏹ Stop monitor</button>
+
       <div style="margin-left:auto;">
         <span class="small">Succesrate: <strong id="successRate">-</strong></span>
       </div>
@@ -72,9 +75,18 @@
       <button id="addHolding">➕ Toevoegen</button>
       <div class="small">Tip: klik "Volgen" in Top10 om coin automatisch te vullen.</div>
     </div>
+
     <table id="holdings-table">
       <thead>
-        <tr><th>Coin</th><th>Aantal</th><th>Aank.prijs</th><th>Huid.prijs</th><th>Winst/Verlies</th><th>Advies</th><th>Actie</th></tr>
+        <tr>
+          <th>Coin</th>
+          <th>Aantal</th>
+          <th>Aank.prijs</th>
+          <th>Huid.prijs</th>
+          <th>Winst/Verlies</th>
+          <th>Advies</th>
+          <th>Actie</th>
+        </tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -83,7 +95,7 @@
     <div id="output"></div>
   </div>
 
-  <!-- Grafiek tab -->
+  <!-- ---------------- Grafiek ---------------- -->
   <div id="tab-charts" class="tab">
     <h2>📈 Grafiek bekijken</h2>
     <div class="controls">
@@ -105,21 +117,32 @@
     <canvas id="coinChart" width="400" height="200"></canvas>
   </div>
 
-  <!-- Advies log tab -->
+  <!-- ---------------- Advies log ---------------- -->
   <div id="tab-adviceLog" class="tab">
     <h2>🧾 Advies Analyse</h2>
-    <div class="small">Je kunt adviesregels verwijderen (niet meer volgen). Adviezen worden dagelijks automatisch gecontroleerd.</div>
+    <div class="small">
+      Je kunt adviesregels verwijderen (niet meer volgen). Adviezen worden dagelijks automatisch gecontroleerd.
+    </div>
     <table id="adviceTable">
       <thead>
-        <tr><th>Tijd advies</th><th>Coin</th><th>Advies</th><th>Startprijs</th><th>Huid.prijs</th><th>Resultaat</th><th>Actie</th></tr>
+        <tr>
+          <th>Tijd advies</th>
+          <th>Coin</th>
+          <th>Advies</th>
+          <th>Startprijs</th>
+          <th>Huid.prijs</th>
+          <th>Resultaat</th>
+          <th>Actie</th>
+        </tr>
       </thead>
       <tbody></tbody>
     </table>
   </div>
 
+  <!-- ---------------- Scripts ---------------- -->
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- main app -->
+  <!-- Main app -->
   <script src="app.js?v=5"></script>
 
   <!-- Service Worker registratie -->
